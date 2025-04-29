@@ -1,26 +1,27 @@
 import os
 import json
 import random
+import string
 import requests
 from PIL import Image, ImageDraw, ImageFont
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
 
-# Set up Google Drive API
-credentials_info = json.loads(os.getenv("GOOGLE_CREDENTIALS"))
-credentials = service_account.Credentials.from_service_account_info(
-    credentials_info,
-    scopes=["https://www.googleapis.com/auth/drive"]
-)
-drive_service = build('drive', 'v3', credentials=credentials)
-
-# Folder ID where images will be uploaded
-GOOGLE_DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
-
-# Horde API
+# Load environment variables
 HORDE_API_KEY = os.getenv("HORDE_API_KEY")
+GOOGLE_CREDENTIALS = os.getenv("GOOGLE_CREDENTIALS")
 
+if not HORDE_API_KEY:
+    raise Exception("❌ HORDE_API_KEY environment variable is missing!")
+
+# Function to generate a random T-shirt slogan
+def generate_random_text():
+    words = ["Adventure", "Dream", "Freedom", "Passion", "Inspire", "Believe", "Create", "Explore", "Imagine", "Shine"]
+    return random.choice(words)
+
+# Function to generate a unique file name
+def generate_unique_filename():
+    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=8)) + ".png"
+
+# Function to generate an AI background using Stable Horde
 def generate_ai_background():
     print("▶️ Submitting background generation to Stable Horde...")
     url = "https://stablehorde.net/api/v2/generate/async"
@@ -31,7 +32,7 @@ def generate_ai_background():
             "sampler_name": "k_euler",
             "cfg_scale": 7,
             "denoising_strength": 0.75,
-            "seed": random.randint(1, 1000000),
+            "seed": str(random.randint(1, 1000000)),  # FIX: make seed a string
             "height": 512,
             "width": 512,
             "steps": 30
@@ -55,7 +56,7 @@ def generate_ai_background():
     data = response.json()
     request_id = data['id']
 
-    # Poll for the result
+    # Poll for status
     print("⏳ Waiting for generation...")
     status_url = f"https://stablehorde.net/api/v2/generate/status/{request_id}"
 
@@ -80,47 +81,40 @@ def generate_ai_background():
         import time
         time.sleep(5)
 
-def create_tshirt_design(background_path):
-    img = Image.open(background_path).convert("RGBA")
-    txt = Image.new('RGBA', img.size, (255,255,255,0))
+# Function to create a T-shirt design
+def create_design(bg_image_path, text):
+    print("🎨 Creating final design...")
+    img = Image.open(bg_image_path)
+    draw = ImageDraw.Draw(img)
 
-    draw = ImageDraw.Draw(txt)
+    try:
+        font = ImageFont.truetype("arial.ttf", 40)
+    except:
+        font = ImageFont.load_default()
 
-    # Random phrase
-    phrases = ["Dream Big", "Stay Cool", "Ride Free", "Wild Soul", "Urban Vibes"]
-    phrase = random.choice(phrases)
+    text_width, text_height = draw.textsize(text, font=font)
+    x = (img.width - text_width) / 2
+    y = img.height - text_height - 20
 
-    # Load a basic font
-    font = ImageFont.load_default()
+    draw.text((x, y), text, font=font, fill=(0, 0, 0))
 
-    text_width, text_height = draw.textsize(phrase, font=font)
-    position = ((img.width - text_width) // 2, (img.height - text_height) // 2)
+    filename = generate_unique_filename()
+    img.save(filename)
+    print(f"✅ Final design saved as {filename}")
+    return filename
 
-    draw.text(position, phrase, font=font, fill=(0, 0, 0, 255))
-
-    combined = Image.alpha_composite(img, txt)
-    design_path = "tshirt_design.png"
-    combined.save(design_path)
-
-    print(f"✅ T-shirt design created: {design_path}")
-    return design_path
-
-def upload_to_drive(file_path):
-    file_metadata = {
-        'name': os.path.basename(file_path),
-        'parents': [GOOGLE_DRIVE_FOLDER_ID]
-    }
-    media = MediaFileUpload(file_path, mimetype='image/png')
-    file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-    print(f"✅ Uploaded {file_path} to Google Drive with ID: {file.get('id')}")
-
+# Main function
 def main():
     try:
         bg_image = generate_ai_background()
-        tshirt_design = create_tshirt_design(bg_image)
-        upload_to_drive(tshirt_design)
+        slogan = generate_random_text()
+        final_design = create_design(bg_image, slogan)
+
+        # Done! You can later upload it to Google Drive here if you want
+        print(f"🎉 Finished! Design ready: {final_design}")
+
     except Exception as e:
-        print(f"❌ An error occurred: {e}")
+        print(f"❌ An error occurred: {str(e)}")
 
 if __name__ == "__main__":
     main()

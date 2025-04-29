@@ -1,98 +1,110 @@
 import os
 import random
 import string
-import json
 import requests
-from PIL import Image, ImageDraw, ImageFont
+import json
 from io import BytesIO
+from PIL import Image, ImageDraw, ImageFont
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
+# =============== CONFIGURATION ===============
 
-# Huggingface and Google credentials
-HUGGINGFACE_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
-GOOGLE_CREDENTIALS = os.getenv("GOOGLE_CREDENTIALS")
+# Get Google Drive credentials from GitHub Secrets
+credentials_info = json.loads(os.getenv("GOOGLE_CREDENTIALS"))
+credentials = service_account.Credentials.from_service_account_info(
+    credentials_info,
+    scopes=["https://www.googleapis.com/auth/drive.file"]
+)
 
-# Model that supports API inference
-API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1"
+# HuggingFace API setup
+huggingface_token = os.getenv("HUGGINGFACE_TOKEN")
+model_id = "stabilityai/sdxl-lite"  # ✅ Supported model
+api_url = f"https://api-inference.huggingface.co/models/{model_id}"
 
-# Random text options for T-shirt designs
-DESIGN_TEXTS = [
-    "Dream Big", "Stay Wild", "Good Vibes Only", "Adventure Awaits",
-    "Born to Ride", "Stay Positive", "Be Yourself", "Never Give Up",
-    "Bike Lover", "Ride Free", "Stay Strong", "Love More", "Chase Dreams",
-]
+# Folder name where files will be uploaded in Drive
+folder_name = "T-shirt Designs"
+
+# ==============================================
 
 def generate_random_text():
-    return random.choice(DESIGN_TEXTS)
+    words = [
+        "Adventure", "Freedom", "Wild", "Dream", "Courage",
+        "Explore", "Inspire", "Create", "Believe", "Passion"
+    ]
+    return random.choice(words)
 
-def generate_ai_background(prompt="A colorful abstract background for T-shirt"):
+def generate_filename():
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=8)) + ".png"
+
+def generate_ai_background():
     print("Generating AI Background...")
-    headers = {"Authorization": f"Bearer {HUGGINGFACE_TOKEN}"}
-    payload = {"inputs": prompt}
-    
-    response = requests.post(API_URL, headers=headers, json=payload)
+    headers = {"Authorization": f"Bearer {huggingface_token}"}
+    prompt = "artistic colorful t-shirt background design"
+    response = requests.post(api_url, headers=headers, json={"inputs": prompt})
+
     if response.status_code != 200:
         raise Exception(f"AI generation failed: {response.text}")
-    
+
     image = Image.open(BytesIO(response.content))
     return image
 
-def create_tshirt_design(bg_image, text):
-    print("Creating T-shirt Design...")
-    # Resize background
-    bg_image = bg_image.resize((1024, 1024))
-    
-    draw = ImageDraw.Draw(bg_image)
-    
+def create_tshirt_design(background):
+    print("Creating T-shirt design...")
+    width, height = background.size
+    draw = ImageDraw.Draw(background)
+
+    font_size = width // 10
     try:
-        font = ImageFont.truetype("arial.ttf", size=80)
+        font = ImageFont.truetype("arial.ttf", font_size)
     except:
         font = ImageFont.load_default()
-    
-    # Text size
+
+    text = generate_random_text()
     text_width, text_height = draw.textsize(text, font=font)
-    position = ((1024 - text_width) / 2, (1024 - text_height) / 2)
 
-    draw.text(position, text, font=font, fill="white")
-    return bg_image
+    text_x = (width - text_width) / 2
+    text_y = (height - text_height) / 2
 
-def upload_to_drive(file_path, file_name):
+    draw.text((text_x, text_y), text, font=font, fill="white")
+
+    filename = generate_filename()
+    background.save(filename)
+    return filename
+
+def upload_to_drive(filename):
     print("Uploading to Google Drive...")
-    credentials_info = json.loads(GOOGLE_CREDENTIALS)
-    credentials = service_account.Credentials.from_service_account_info(
-        credentials_info,
-        scopes=["https://www.googleapis.com/auth/drive"]
-    )
+    service = build("drive", "v3", credentials=credentials)
 
-    service = build('drive', 'v3', credentials=credentials)
+    # Check if folder exists
+    query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    results = service.files().list(q=query, spaces="drive").execute()
+    items = results.get("files", [])
 
-    file_metadata = {'name': file_name, 'parents': []}
-    media = MediaFileUpload(file_path, mimetype='image/png')
-    uploaded_file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-    print(f"Uploaded file ID: {uploaded_file.get('id')}")
-    return uploaded_file.get('id')
+    if not items:
+        file_metadata = {
+            "name": folder_name,
+            "mimeType": "application/vnd.google-apps.folder"
+        }
+        folder = service.files().create(body=file_metadata, fields="id").execute()
+        folder_id = folder.get("id")
+    else:
+        folder_id = items[0]["id"]
 
-def save_image_locally(img, folder="designs"):
-    if not os.path.exists(folder):
-        os.makedirs(folder)
-    
-    filename = ''.join(random.choices(string.ascii_lowercase + string.digits, k=10)) + ".png"
-    path = os.path.join(folder, filename)
-    img.save(path)
-    print(f"Saved image: {path}")
-    return path, filename
+    file_metadata = {
+        "name": filename,
+        "parents": [folder_id]
+    }
+    media = MediaFileUpload(filename, resumable=True)
+    service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+    print(f"Uploaded {filename} successfully!")
 
 def main():
-    text = generate_random_text()
     bg_image = generate_ai_background()
-    final_design = create_tshirt_design(bg_image, text)
-    
-    path, filename = save_image_locally(final_design)
-    
-    # Upload to Google Drive
-    upload_to_drive(path, filename)
+    design_filename = create_tshirt_design(bg_image)
+    upload_to_drive(design_filename)
+    print("Process completed.")
 
 if __name__ == "__main__":
     main()

@@ -58,16 +58,27 @@ def generate_ai_background():
 
     # Poll for status
     print("⏳ Waiting for generation...")
-    status_url = f"https://stablehorde.net/api/v2/generate/status/{request_id}"
 
     while True:
+        status_url = f"https://stablehorde.net/api/v2/generate/status/{request_id}"
         status_resp = requests.get(status_url, headers=headers)
+
+        if status_resp.status_code != 200:
+            print(f"❌ Error checking status: {status_resp.status_code}")
+            break
+
         status_data = status_resp.json()
+
+        # Check if 'done' key exists in the response data
+        if 'done' not in status_data:
+            print("❌ Error: 'done' key not found in response")
+            break
 
         if status_data['done']:
             generations = status_data.get('generations', [])
             if not generations:
-                raise Exception("❌ No generations received.")
+                print("❌ Error: No generations found.")
+                break
 
             img_url = generations[0]['img']
             img_resp = requests.get(f"https://stablehorde.net{img_url}")
@@ -77,7 +88,7 @@ def generate_ai_background():
 
             print("✅ AI Background generated and saved as background.png")
             return "background.png"
-        
+
         import time
         time.sleep(5)
 

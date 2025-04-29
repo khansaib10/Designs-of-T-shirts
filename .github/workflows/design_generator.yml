@@ -1,9 +1,9 @@
-name: Generate T-Shirt Design
+name: Generate T-shirt Design
 
 on:
-  workflow_dispatch:  # Manual run
+  workflow_dispatch:  # manual run
   schedule:
-    - cron: "*/30 * * * *"  # Every 30 minutes
+    - cron: "*/30 * * * *"  # every 30 minutes
 
 jobs:
   build:
@@ -11,18 +11,18 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v3
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v4
       with:
-        python-version: '3.x'
+        python-version: '3.11'
 
     - name: Install dependencies
       run: |
-        pip install pillow pydrive2 requests
+        pip install pillow requests pydrive
 
-    - name: Run generate_design.py
+    - name: Run Python script
       env:
         HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
       run: python generate_design.py

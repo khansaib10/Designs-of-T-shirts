@@ -1,95 +1,97 @@
 import os
+import json
 import random
 import string
 import requests
-from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
+from PIL import Image, ImageDraw, ImageFont
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# Load HuggingFace Token
-HUGGINGFACE_TOKEN = os.getenv('HUGGINGFACE_TOKEN')
+# ─── Config ────────────────────────────────────────────────────────────────────
+# HuggingFace
+HUGGINGFACE_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
 
-# Google Drive setup with service account
-SCOPES = ['https://www.googleapis.com/auth/drive.file']
-
-# Use the environment variable for service account credentials
-SERVICE_ACCOUNT_FILE = os.getenv('GOOGLE_CREDENTIALS')
-
-# Authenticate using service account
+# Google Drive (Service Account JSON stored in the secret GOOGLE_CREDENTIALS)
+credentials_info = json.loads(os.getenv("GOOGLE_CREDENTIALS"))
+SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 credentials = service_account.Credentials.from_service_account_info(
-    SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-drive_service = build('drive', 'v3', credentials=credentials)
+    credentials_info, scopes=SCOPES
+)
+drive_service = build("drive", "v3", credentials=credentials)
 
-# Your Google Drive Folder ID
-FOLDER_ID = "1jnHnezrLNTl3ebmlt2QRBDSQplP_Q4wh"
+FOLDER_ID = "1jnHnezrLNTl3ebmlt2QRBDSQplP_Q4wh"  # your Drive folder
 
-# Fonts you have
-fonts = [
+# Fonts (must be uploaded in your repo)
+FONTS = [
     "CalSans-Regular.ttf",
     "RobotoMono-VariableFont_wght.ttf",
     "Tagesschrift-Regular.ttf",
 ]
 
+# Sample text list
+TEXTS = [
+    "Dream Big", "Stay Wild", "Good Vibes", "Be Different",
+    "No Limits", "Fearless", "Born to Shine", "Stay Focused",
+    "Create Your Future", "Unstoppable Energy"
+]
+
+# ─── Generate AI Background ───────────────────────────────────────────────────
 def generate_ai_background():
-    print("Generating AI Background...")
     url = "https://api-inference.huggingface.co/models/stabilityai/sdxl-turbo"
     headers = {"Authorization": f"Bearer {HUGGINGFACE_TOKEN}"}
     payload = {
         "inputs": "beautiful colorful abstract background, vibrant, t-shirt design, no text, no watermark, hd, 3000x3000",
     }
+    resp = requests.post(url, headers=headers, json=payload)
+    if resp.status_code != 200:
+        raise Exception(f"AI generation failed: {resp.text}")
+    return Image.open(BytesIO(resp.content))
 
-    response = requests.post(url, headers=headers, json=payload)
-    if response.status_code != 200:
-        raise Exception(f"Failed to generate image: {response.text}")
+# ─── Compose Final Design ────────────────────────────────────────────────────
+def create_design(bg: Image.Image) -> Image.Image:
+    draw = ImageDraw.Draw(bg)
 
-    image = Image.open(BytesIO(response.content))
-    return image
+    # Pick text and font
+    text = random.choice(TEXTS)
+    font_path = random.choice(FONTS)
+    font_size = random.randint(180, 250)
+    font = ImageFont.truetype(font_path, font_size)
 
-def create_design(background):
-    print("Adding text and shapes...")
-    draw = ImageDraw.Draw(background)
+    # Measure and center
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    x = (bg.width - text_w) / 2
+    y = (bg.height - text_h) / 2
 
-    # Random text
-    text = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
-    font_path = random.choice(fonts)
-    font = ImageFont.truetype(font_path, random.randint(100, 200))
-
-    # Text position
-    text_width, text_height = draw.textbbox((0, 0), text, font=font)[2:]
-    x = (background.width - text_width) // 2
-    y = (background.height - text_height) // 2
-
-    # Draw text
+    # Draw drop-shadow
+    for dx, dy in [(-2,-2),(2,-2),(-2,2),(2,2)]:
+        draw.text((x+dx, y+dy), text, font=font, fill="black")
+    # Draw main text
     draw.text((x, y), text, font=font, fill="white")
 
-    # Draw random circles (shapes)
-    for _ in range(5):
-        radius = random.randint(50, 150)
-        cx = random.randint(0, background.width)
-        cy = random.randint(0, background.height)
-        color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
-        draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), fill=color, outline=None)
+    return bg
 
-    return background
+# ─── Upload to Google Drive ───────────────────────────────────────────────────
+def upload_to_drive(filepath: str):
+    metadata = {"name": os.path.basename(filepath), "parents": [FOLDER_ID]}
+    media = MediaFileUpload(filepath, mimetype="image/png")
+    file = drive_service.files().create(
+        body=metadata, media_body=media, fields="id"
+    ).execute()
+    print(f"Uploaded to Drive, file ID: {file['id']}")
 
-def upload_to_drive(file_path):
-    print(f"Uploading {file_path} to Google Drive...")
-    file_metadata = {'name': os.path.basename(file_path), 'parents': [FOLDER_ID]}
-    media = MediaFileUpload(file_path, mimetype='image/png')
-    file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-    print(f"File uploaded with ID: {file.get('id')}")
-
+# ─── Main ────────────────────────────────────────────────────────────────────
 def main():
-    background = generate_ai_background()
-    final_design = create_design(background)
+    bg = generate_ai_background()
+    final = create_design(bg)
 
-    filename = ''.join(random.choices(string.ascii_lowercase + string.digits, k=12)) + ".png"
-    file_path = f"/tmp/{filename}"
-    final_design.save(file_path, format="PNG")
+    out_name = f"design_{random.randint(1000,9999)}.png"
+    out_path = f"/tmp/{out_name}"
+    final.save(out_path, format="PNG", dpi=(300,300))
 
-    upload_to_drive(file_path)
+    upload_to_drive(out_path)
 
 if __name__ == "__main__":
     main()

@@ -28,9 +28,9 @@ def create_random_design():
     # Random big font size
     fontsize = random.randint(150, 250)
 
-    # Load font
+    # Load font (make sure Tagesschrift-Regular.ttf is uploaded to your repo)
     try:
-        fnt = ImageFont.truetype("arial.ttf", fontsize)
+        fnt = ImageFont.truetype("Tagesschrift-Regular.ttf", fontsize)  # Use your uploaded font name here
     except:
         fnt = ImageFont.load_default()
 

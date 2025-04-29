@@ -1,33 +1,43 @@
 import os
 import random
+import string
 import requests
-from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
-from pydrive2.auth import GoogleAuth
-from pydrive2.drive import GoogleDrive
+from io import BytesIO
+from pydrive.auth import GoogleAuth
+from pydrive.drive import GoogleDrive
 
-# Settings
-FOLDER_ID = '1jnHnezrLNTl3ebmlt2QRBDSQplP_Q4wh'  # Your Google Drive folder id
-HUGGINGFACE_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
+# Load HuggingFace Token
+HUGGINGFACE_TOKEN = os.getenv('HUGGINGFACE_TOKEN')
 
-# Fonts (Make sure these font files are uploaded in repo)
-FONTS = [
+# Setup Google Drive
+gauth = GoogleAuth()
+gauth.LoadCredentialsFile("credentials.json")
+if gauth.credentials is None:
+    gauth.LocalWebserverAuth()
+elif gauth.access_token_expired:
+    gauth.Refresh()
+else:
+    gauth.Authorize()
+gauth.SaveCredentialsFile("credentials.json")
+drive = GoogleDrive(gauth)
+
+# Your Google Drive Folder ID
+FOLDER_ID = "1jnHnezrLNTl3ebmlt2QRBDSQplP_Q4wh"
+
+# Fonts you have
+fonts = [
     "CalSans-Regular.ttf",
     "RobotoMono-VariableFont_wght.ttf",
-    "Tagesschrift-Regular.ttf"
-]
-
-# List of random text quotes
-TEXTS = [
-    "Dream Big", "Stay Wild", "Good Vibes", "Be Different", "No Limits", "Fearless", "Born to Shine",
-    "Stay Focused", "Create Your Future", "Unstoppable Energy", "Design Your Dreams", "Inspire the World"
+    "Tagesschrift-Regular.ttf",
 ]
 
 def generate_ai_background():
-    url = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1"
+    print("Generating AI Background...")
+    url = "https://api-inference.huggingface.co/models/stabilityai/sdxl-turbo"
     headers = {"Authorization": f"Bearer {HUGGINGFACE_TOKEN}"}
     payload = {
-        "inputs": "beautiful colorful abstract background, soft light, t-shirt design, no text, no watermark, hd, 3000x3000",
+        "inputs": "beautiful colorful abstract background, vibrant, t-shirt design, no text, no watermark, hd, 3000x3000",
     }
 
     response = requests.post(url, headers=headers, json=payload)
@@ -37,57 +47,49 @@ def generate_ai_background():
     image = Image.open(BytesIO(response.content))
     return image
 
-def add_text_on_image(image):
-    draw = ImageDraw.Draw(image)
-    font_path = random.choice(FONTS)
-    font_size = random.randint(180, 250)  # Bigger stylish text
-    font = ImageFont.truetype(font_path, size=font_size)
-    text = random.choice(TEXTS)
+def create_design(background):
+    print("Adding text and shapes...")
+    draw = ImageDraw.Draw(background)
 
-    # Get text size
-    text_width, text_height = draw.textsize(text, font=font)
-    image_width, image_height = image.size
+    # Random text
+    text = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+    font_path = random.choice(fonts)
+    font = ImageFont.truetype(font_path, random.randint(100, 200))
 
-    # Position text at center
-    position = ((image_width - text_width) / 2, (image_height - text_height) / 2)
+    # Text position
+    text_width, text_height = draw.textbbox((0, 0), text, font=font)[2:]
+    x = (background.width - text_width) // 2
+    y = (background.height - text_height) // 2
 
-    # Draw text with shadow for premium look
-    shadow_color = "black"
-    text_color = "white"
-    x, y = position
-    # shadow
-    draw.text((x-2, y-2), text, font=font, fill=shadow_color)
-    draw.text((x+2, y-2), text, font=font, fill=shadow_color)
-    draw.text((x-2, y+2), text, font=font, fill=shadow_color)
-    draw.text((x+2, y+2), text, font=font, fill=shadow_color)
-    # text
-    draw.text(position, text, font=font, fill=text_color)
+    # Draw text
+    draw.text((x, y), text, font=font, fill="white")
 
-    return image
+    # Draw random circles (shapes)
+    for _ in range(5):
+        radius = random.randint(50, 150)
+        cx = random.randint(0, background.width)
+        cy = random.randint(0, background.height)
+        color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+        draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), fill=color, outline=None)
 
-def upload_to_drive(filepath):
-    gauth = GoogleAuth()
-    gauth.LocalWebserverAuth()
-    drive = GoogleDrive(gauth)
+    return background
 
+def upload_to_drive(file_path):
+    print(f"Uploading {file_path} to Google Drive...")
     file_drive = drive.CreateFile({'parents': [{'id': FOLDER_ID}]})
-    file_drive.SetContentFile(filepath)
+    file_drive.SetContentFile(file_path)
     file_drive.Upload()
-    print(f"Uploaded {filepath} to Google Drive.")
+    print("Upload completed!")
 
 def main():
-    print("Generating AI Background...")
     background = generate_ai_background()
+    final_design = create_design(background)
 
-    print("Adding Text...")
-    final_image = add_text_on_image(background)
+    filename = ''.join(random.choices(string.ascii_lowercase + string.digits, k=12)) + ".png"
+    file_path = f"/tmp/{filename}"
+    final_design.save(file_path, format="PNG")
 
-    filename = f"design_{random.randint(1000,9999)}.png"
-    filepath = os.path.join(os.getcwd(), filename)
-    final_image.save(filepath, format="PNG", quality=100)
-
-    print("Uploading to Drive...")
-    upload_to_drive(filepath)
+    upload_to_drive(file_path)
 
 if __name__ == "__main__":
     main()

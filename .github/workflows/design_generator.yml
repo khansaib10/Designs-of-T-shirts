@@ -1,0 +1,29 @@
+name: Generate & Upload Design
+
+# Run on a schedule: every 30 minutes
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          pip install pillow
+          pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
+
+      - name: Generate and upload design
+        run: python generate_design.py
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}

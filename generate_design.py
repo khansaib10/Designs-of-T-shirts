@@ -13,19 +13,20 @@ credentials_info = json.loads(os.environ['GOOGLE_CREDENTIALS'])
 credentials = service_account.Credentials.from_service_account_info(credentials_info)
 service = build('drive', 'v3', credentials=credentials)
 
-folder_id = '1jnHnezrLNTl3ebmlt2QRBDSQplP_Q4wh'  # Your Google Drive folder ID
+# Your Google Drive folder ID
+folder_id = '1jnHnezrLNTl3ebmlt2QRBDSQplP_Q4wh'
 
 def create_random_design():
-    # Create blank image
-    img = Image.new('RGB', (1080, 1080), color=random.choice(['white', 'black', 'lightblue', 'pink', 'yellow', 'lightgreen']))
-
+    # Create transparent background
+    img = Image.new('RGBA', (1080, 1080), (0, 0, 0, 0))  # Transparent background
     draw = ImageDraw.Draw(img)
 
-    # Random text
-    txt = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    # Random motivational words
+    words = ['Dream', 'Freedom', 'Hustle', 'Create', 'Inspire', 'Legend', 'Fearless', 'Ambition', 'Grind', 'Passion']
+    txt = random.choice(words)
 
-    # Random font size
-    fontsize = random.randint(80, 150)
+    # Random big font size
+    fontsize = random.randint(150, 250)
 
     # Load font
     try:
@@ -33,17 +34,17 @@ def create_random_design():
     except:
         fnt = ImageFont.load_default()
 
-    # Get text size using textbbox
+    # Calculate text size properly
     bbox = draw.textbbox((0, 0), txt, font=fnt)
     tw = bbox[2] - bbox[0]
     th = bbox[3] - bbox[1]
 
-    # Draw text
+    # Draw text centered
     draw.text(
         ((1080 - tw) / 2, (1080 - th) / 2),
         txt,
         font=fnt,
-        fill=random.choice(['black', 'white', 'blue', 'red', 'green', 'purple'])
+        fill=random.choice(['#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF'])  # Bright colors
     )
 
     # Save to memory

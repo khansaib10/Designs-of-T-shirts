@@ -14,60 +14,72 @@ credentials = service_account.Credentials.from_service_account_info(credentials_
 service = build('drive', 'v3', credentials=credentials)
 folder_id = '1jnHnezrLNTl3ebmlt2QRBDSQplP_Q4wh'  # Your Drive folder ID
 
+# ─── Quotes List ────────────────────────────────────────────────────────────
+quotes = [
+    "Dream Big", "Stay Strong", "Work Hard", "Never Quit",
+    "Chase Dreams", "Be Fearless", "Rise Above", "Stay Humble",
+    "Create Yourself", "Bold Moves", "Fear Less", "Mind Over Matter",
+    "Be Your Best", "Good Vibes", "Limitless", "Focused Energy",
+    "Make It Happen", "Stay Positive", "Push Yourself", "Stay Focused"
+]
+
+# ─── Fonts List ─────────────────────────────────────────────────────────────
+fonts = [
+    "CalSans-Regular.ttf",
+    "RobotoMono-VariableFont_wght.ttf",
+    "Tagesschrift-Regular.ttf"
+]
+
 # ─── Design Generation ──────────────────────────────────────────────────────
-def create_random_design():
+def create_premium_design():
     size = (3000, 3000)
-    img = Image.new('RGBA', size, (0, 0, 0, 0))  # Transparent canvas
+    img = Image.new('RGBA', size, (0, 0, 0, 0))  # Transparent background
     draw = ImageDraw.Draw(img)
 
-    # 1. Draw random shapes first
-    for _ in range(random.randint(5, 10)):
-        shape_type = random.choice(['circle', 'rectangle', 'line'])
-        color = random.choice(['#FF5733', '#33FF57', '#3357FF', '#F333FF', '#33FFF6', '#FFF633'])
-        x1 = random.randint(0, size[0])
-        y1 = random.randint(0, size[1])
-        x2 = random.randint(0, size[0])
-        y2 = random.randint(0, size[1])
+    # 1. Select random quote and font
+    quote = random.choice(quotes)
+    words = quote.split()
+    
+    # 2. Random font and size
+    font_file = random.choice(fonts)
+    fontsize = random.randint(350, 550)
+    fnt = ImageFont.truetype(font_file, fontsize)
 
-        if shape_type == 'circle':
-            bbox = [min(x1,x2), min(y1,y2), max(x1,x2), max(y1,y2)]
-            draw.ellipse(bbox, outline=color, width=10)
-        elif shape_type == 'rectangle':
-            bbox = [min(x1,x2), min(y1,y2), max(x1,x2), max(y1,y2)]
-            draw.rectangle(bbox, outline=color, width=10)
-        elif shape_type == 'line':
-            draw.line([x1, y1, x2, y2], fill=color, width=8)
+    # 3. Split text if 3 words
+    if len(words) > 2:
+        quote = f"{words[0]} {words[1]}\n{words[2]}"
+    
+    # 4. Calculate text size
+    bbox = draw.textbbox((0, 0), quote, font=fnt, align='center')
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
 
-    # 2. Random motivational word
-    words = ['Dream', 'Freedom', 'Hustle', 'Create', 'Inspire', 'Legend', 'Fearless', 'Ambition', 'Grind', 'Passion']
-    txt = random.choice(words)
+    # 5. Center position
+    x = (size[0] - text_width) / 2
+    y = (size[1] - text_height) / 2
 
-    # 3. Pick a random font
-    fonts = [
-        "CalSans-Regular.ttf",
-        "RobotoMono-VariableFont_wght.ttf",  # Upload more fonts and list them here
-        "Tagesschrift-Regular.ttf"
-    ]
-    selected_font = random.choice(fonts)
-    fontsize = random.randint(350, 600)
-    try:
-        fnt = ImageFont.truetype(selected_font, fontsize)
-    except:
-        print(f"Failed loading font {selected_font}, using default font.")
-        fnt = ImageFont.load_default()
+    # 6. Draw text
+    text_color = random.choice(["#000000", "#ffffff"])  # Black or White
+    draw.text((x, y), quote, font=fnt, fill=text_color, align="center")
 
-    # 4. Measure text size and center it
-    bbox = draw.textbbox((0, 0), txt, font=fnt)
-    tw = bbox[2] - bbox[0]
-    th = bbox[3] - bbox[1]
-    x = (size[0] - tw) / 2
-    y = (size[1] - th) / 2
+    # 7. Draw underline
+    underline_width = text_width * 0.6
+    underline_height = 10  # thickness
+    underline_x1 = (size[0] - underline_width) / 2
+    underline_y1 = y + text_height + 30
+    underline_x2 = underline_x1 + underline_width
+    underline_y2 = underline_y1 + underline_height
+    draw.rectangle([underline_x1, underline_y1, underline_x2, underline_y2], fill=text_color)
 
-    # 5. Draw the big text in a strong color
-    text_color = random.choice(['#000000', '#FFFFFF', '#FF0000', '#00FF00', '#0000FF'])
-    draw.text((x, y), txt, font=fnt, fill=text_color)
+    # 8. Optional minimal decoration (stars/dots)
+    if random.random() < 0.5:  # 50% chance
+        # Draw small star/dot at top center
+        deco_size = 20
+        deco_x = size[0] / 2 - deco_size / 2
+        deco_y = y - 100
+        draw.ellipse([deco_x, deco_y, deco_x + deco_size, deco_y + deco_size], fill=text_color)
 
-    # 6. Save to BytesIO with 300 DPI
+    # 9. Save as PNG 300DPI
     img_byte_arr = io.BytesIO()
     img.save(img_byte_arr, format='PNG', dpi=(300, 300))
     img_byte_arr.seek(0)
@@ -87,6 +99,6 @@ def upload_to_drive(file_bytes, filename):
 
 # ─── Main ────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    img_stream = create_random_design()
+    img_stream = create_premium_design()
     fname = f"design_{random.randint(1000,9999)}.png"
     upload_to_drive(img_stream, fname)

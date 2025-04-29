@@ -4,23 +4,23 @@ import string
 import requests
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
-from pydrive.auth import GoogleAuth
-from pydrive.drive import GoogleDrive
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
 # Load HuggingFace Token
 HUGGINGFACE_TOKEN = os.getenv('HUGGINGFACE_TOKEN')
 
-# Setup Google Drive
-gauth = GoogleAuth()
-gauth.LoadCredentialsFile("credentials.json")
-if gauth.credentials is None:
-    gauth.LocalWebserverAuth()
-elif gauth.access_token_expired:
-    gauth.Refresh()
-else:
-    gauth.Authorize()
-gauth.SaveCredentialsFile("credentials.json")
-drive = GoogleDrive(gauth)
+# Google Drive setup with service account
+SCOPES = ['https://www.googleapis.com/auth/drive.file']
+
+# Use the environment variable for service account credentials
+SERVICE_ACCOUNT_FILE = os.getenv('GOOGLE_CREDENTIALS')
+
+# Authenticate using service account
+credentials = service_account.Credentials.from_service_account_info(
+    SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+drive_service = build('drive', 'v3', credentials=credentials)
 
 # Your Google Drive Folder ID
 FOLDER_ID = "1jnHnezrLNTl3ebmlt2QRBDSQplP_Q4wh"
@@ -76,10 +76,10 @@ def create_design(background):
 
 def upload_to_drive(file_path):
     print(f"Uploading {file_path} to Google Drive...")
-    file_drive = drive.CreateFile({'parents': [{'id': FOLDER_ID}]})
-    file_drive.SetContentFile(file_path)
-    file_drive.Upload()
-    print("Upload completed!")
+    file_metadata = {'name': os.path.basename(file_path), 'parents': [FOLDER_ID]}
+    media = MediaFileUpload(file_path, mimetype='image/png')
+    file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    print(f"File uploaded with ID: {file.get('id')}")
 
 def main():
     background = generate_ai_background()

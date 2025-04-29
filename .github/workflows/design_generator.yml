@@ -1,9 +1,12 @@
 name: Generate T-shirt Design
 
 on:
-  workflow_dispatch:  # manual run
+  # Trigger manually through GitHub UI
+  workflow_dispatch:  # Manual run
+
+  # Trigger automatically every 30 minutes using cron
   schedule:
-    - cron: "*/30 * * * *"  # every 30 minutes
+    - cron: "*/30 * * * *"  # Every 30 minutes
 
 jobs:
   build:
@@ -25,4 +28,5 @@ jobs:
     - name: Run Python script
       env:
         HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
+        GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
       run: python generate_design.py

@@ -1,31 +1,42 @@
 import os
 import json
+import random
 import requests
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
-from google.auth.transport.requests import Request
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# HuggingFace and Google Credentials
+# Set up your HuggingFace and Google Drive variables
 huggingface_token = os.getenv("HUGGINGFACE_TOKEN")
-google_credentials = json.loads(os.getenv("GOOGLE_CREDENTIALS"))
-
-# Set up Google Drive
-credentials = service_account.Credentials.from_service_account_info(
-    google_credentials, scopes=["https://www.googleapis.com/auth/drive.file"]
-)
-drive_service = build("drive", "v3", credentials=credentials)
-
-# Working Model (Free HuggingFace Hosted Inference)
+google_credentials = os.getenv("GOOGLE_CREDENTIALS")
 api_url = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1"
 
+# Generate a random prompt
+def generate_prompt():
+    prompts = [
+        "Colorful abstract t-shirt design",
+        "Futuristic robot t-shirt art",
+        "Vintage retro sunset design",
+        "Minimalist aesthetic pattern",
+        "Fantasy dragon flying in sky",
+        "Cute cat with sunglasses",
+        "Nature landscape with mountains",
+        "Neon cyberpunk cityscape",
+        "Japanese anime style character",
+        "Psychedelic colorful artwork"
+    ]
+    return random.choice(prompts)
+
+# Generate background image using HuggingFace API
 def generate_ai_background():
     print("Generating AI Background...")
-    headers = {"Authorization": f"Bearer {huggingface_token}"}
+    headers = {
+        "Authorization": f"Bearer {huggingface_token}"
+    }
     payload = {
-        "inputs": "a beautiful colorful t-shirt design, fantasy style, high quality, trending on artstation"
+        "inputs": generate_prompt()
     }
 
     response = requests.post(api_url, headers=headers, json=payload)
@@ -33,22 +44,67 @@ def generate_ai_background():
     if response.status_code != 200:
         raise Exception(f"AI generation failed: {response.text}")
 
-    # HuggingFace returns binary image
     image = Image.open(BytesIO(response.content))
     return image
 
-def upload_to_drive(file_path, folder_id="root"):
-    file_metadata = {"name": os.path.basename(file_path), "parents": [folder_id]}
-    media = MediaFileUpload(file_path, mimetype="image/png")
-    file = drive_service.files().create(body=file_metadata, media_body=media, fields="id").execute()
-    print(f"Uploaded file with ID: {file['id']}")
+# Create a random t-shirt text overlay
+def create_text_overlay(text, width, height):
+    print("Creating text overlay...")
+    overlay = Image.new('RGBA', (width, height), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(overlay)
 
+    font_size = random.randint(30, 60)
+    font = ImageFont.truetype("arial.ttf", font_size)  # Make sure arial.ttf or another font is available
+
+    textwidth, textheight = draw.textsize(text, font=font)
+
+    x = (width - textwidth) / 2
+    y = height - textheight - 20
+
+    draw.text((x, y), text, font=font, fill=(255, 255, 255, 255))
+
+    return overlay
+
+# Upload to Google Drive
+def upload_to_drive(filepath):
+    print("Uploading to Google Drive...")
+
+    credentials_info = json.loads(google_credentials)
+    credentials = service_account.Credentials.from_service_account_info(
+        credentials_info,
+        scopes=["https://www.googleapis.com/auth/drive"]
+    )
+    drive_service = build('drive', 'v3', credentials=credentials)
+
+    file_metadata = {
+        'name': os.path.basename(filepath),
+        'parents': [os.getenv("DRIVE_FOLDER_ID")]  # Folder ID from GitHub Secrets
+    }
+    media = MediaFileUpload(filepath, mimetype='image/png')
+
+    uploaded_file = drive_service.files().create(
+        body=file_metadata,
+        media_body=media,
+        fields='id'
+    ).execute()
+
+    print(f"File uploaded successfully with ID: {uploaded_file['id']}")
+
+# Main function
 def main():
     try:
         bg_image = generate_ai_background()
-        file_path = "background_image.png"
-        bg_image.save(file_path)
-        upload_to_drive(file_path)
+
+        text_overlay = create_text_overlay("Limited Edition", bg_image.width, bg_image.height)
+
+        combined = Image.alpha_composite(bg_image.convert('RGBA'), text_overlay)
+
+        filename = f"design_{random.randint(1000, 9999)}.png"
+        combined.save(filename, "PNG")
+        print(f"Saved {filename}")
+
+        upload_to_drive(filename)
+
     except Exception as e:
         print(f"An error occurred: {e}")
 

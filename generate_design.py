@@ -34,7 +34,7 @@ def authenticate_drive():
 
 def upload_to_drive(fname):
     drive = authenticate_drive()
-    folder_id = 'YOUR_FOLDER_ID_HERE'
+    folder_id = '1jnHnezrLNTl3ebmlt2QRBDSQplP_Q4wh'
     meta = {'name': fname, 'parents': [folder_id]}
     media = MediaFileUpload(fname, mimetype='image/png')
     drive.files().create(body=meta, media_body=media).execute()

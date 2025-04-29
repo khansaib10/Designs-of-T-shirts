@@ -9,89 +9,80 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# ─── Config ────────────────────────────────────────────────────────────────────
-# HuggingFace
+# Load Huggingface token
 HUGGINGFACE_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
 
-# Google Drive (Service Account JSON stored in the secret GOOGLE_CREDENTIALS)
+# Load Google Drive credentials from environment variable
 credentials_info = json.loads(os.getenv("GOOGLE_CREDENTIALS"))
-SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 credentials = service_account.Credentials.from_service_account_info(
-    credentials_info, scopes=SCOPES
+    credentials_info,
+    scopes=["https://www.googleapis.com/auth/drive.file"]
 )
-drive_service = build("drive", "v3", credentials=credentials)
 
-FOLDER_ID = "1jnHnezrLNTl3ebmlt2QRBDSQplP_Q4wh"  # your Drive folder
+# Initialize Google Drive service
+drive_service = build('drive', 'v3', credentials=credentials)
 
-# Fonts (must be uploaded in your repo)
-FONTS = [
-    "CalSans-Regular.ttf",
-    "RobotoMono-VariableFont_wght.ttf",
-    "Tagesschrift-Regular.ttf",
-]
-
-# Sample text list
-TEXTS = [
-    "Dream Big", "Stay Wild", "Good Vibes", "Be Different",
-    "No Limits", "Fearless", "Born to Shine", "Stay Focused",
-    "Create Your Future", "Unstoppable Energy"
-]
-
-# ─── Generate AI Background ───────────────────────────────────────────────────
+# Function to generate AI background
 def generate_ai_background():
-    url = "https://api-inference.huggingface.co/models/stabilityai/sdxl-turbo"
-    headers = {"Authorization": f"Bearer {HUGGINGFACE_TOKEN}"}
-    payload = {
-        "inputs": "beautiful colorful abstract background, vibrant, t-shirt design, no text, no watermark, hd, 3000x3000",
+    print("Generating AI Background...")
+    api_url = "https://api-inference.huggingface.co/models/prompthero/openjourney"  # changed model here
+    headers = {
+        "Authorization": f"Bearer {HUGGINGFACE_TOKEN}",
+        "Content-Type": "application/json"
     }
-    resp = requests.post(url, headers=headers, json=payload)
-    if resp.status_code != 200:
-        raise Exception(f"AI generation failed: {resp.text}")
-    return Image.open(BytesIO(resp.content))
+    payload = {
+        "inputs": "fantasy colorful landscape, vibrant background, high quality",
+        "options": {
+            "wait_for_model": True
+        }
+    }
+    response = requests.post(api_url, headers=headers, json=payload)
 
-# ─── Compose Final Design ────────────────────────────────────────────────────
-def create_design(bg: Image.Image) -> Image.Image:
-    draw = ImageDraw.Draw(bg)
+    if response.status_code != 200:
+        raise Exception(f"AI generation failed: {response.text}")
 
-    # Pick text and font
-    text = random.choice(TEXTS)
-    font_path = random.choice(FONTS)
-    font_size = random.randint(180, 250)
-    font = ImageFont.truetype(font_path, font_size)
+    return Image.open(BytesIO(response.content))
 
-    # Measure and center
-    bbox = draw.textbbox((0, 0), text, font=font)
-    text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    x = (bg.width - text_w) / 2
-    y = (bg.height - text_h) / 2
+# Function to generate random text
+def generate_random_text():
+    words = ["Dream", "Inspire", "Create", "Adventure", "Freedom", "Explore", "Believe", "Imagine"]
+    return random.choice(words) + " " + random.choice(words)
 
-    # Draw drop-shadow
-    for dx, dy in [(-2,-2),(2,-2),(-2,2),(2,2)]:
-        draw.text((x+dx, y+dy), text, font=font, fill="black")
-    # Draw main text
-    draw.text((x, y), text, font=font, fill="white")
+# Function to overlay text on the background
+def create_design(background, text):
+    print("Adding text to design...")
+    draw = ImageDraw.Draw(background)
+    font_size = int(background.size[1] * 0.1)
+    try:
+        font = ImageFont.truetype("arial.ttf", font_size)
+    except IOError:
+        font = ImageFont.load_default()
 
-    return bg
+    text_width, text_height = draw.textsize(text, font=font)
+    position = ((background.size[0] - text_width) // 2, (background.size[1] - text_height) // 2)
 
-# ─── Upload to Google Drive ───────────────────────────────────────────────────
-def upload_to_drive(filepath: str):
-    metadata = {"name": os.path.basename(filepath), "parents": [FOLDER_ID]}
-    media = MediaFileUpload(filepath, mimetype="image/png")
-    file = drive_service.files().create(
-        body=metadata, media_body=media, fields="id"
-    ).execute()
-    print(f"Uploaded to Drive, file ID: {file['id']}")
+    draw.text(position, text, font=font, fill=(255, 255, 255))
+    return background
 
-# ─── Main ────────────────────────────────────────────────────────────────────
+# Function to upload to Google Drive
+def upload_to_drive(file_path, filename):
+    print("Uploading to Google Drive...")
+    file_metadata = {"name": filename}
+    media = MediaFileUpload(file_path, mimetype='image/png')
+    file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    print(f"Uploaded file ID: {file.get('id')}")
+
+# Main function
 def main():
     bg = generate_ai_background()
-    final = create_design(bg)
+    text = generate_random_text()
+    design = create_design(bg, text)
 
-    out_name = f"design_{random.randint(1000,9999)}.png"
-    out_path = f"/tmp/{out_name}"
-    final.save(out_path, format="PNG", dpi=(300,300))
+    filename = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8)) + ".png"
+    filepath = f"/tmp/{filename}"
+    design.save(filepath)
 
-    upload_to_drive(out_path)
+    upload_to_drive(filepath, filename)
 
 if __name__ == "__main__":
     main()

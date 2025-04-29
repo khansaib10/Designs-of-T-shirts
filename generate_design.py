@@ -8,12 +8,11 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# Set up your HuggingFace and Google Drive variables
+# API details
 huggingface_token = os.getenv("HUGGINGFACE_TOKEN")
 google_credentials = os.getenv("GOOGLE_CREDENTIALS")
-api_url = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1"
+api_url = "https://api-inference.huggingface.co/models/stabilityai/sdxl-turbo"  # <-- NEW MODEL
 
-# Generate a random prompt
 def generate_prompt():
     prompts = [
         "Colorful abstract t-shirt design",
@@ -29,7 +28,6 @@ def generate_prompt():
     ]
     return random.choice(prompts)
 
-# Generate background image using HuggingFace API
 def generate_ai_background():
     print("Generating AI Background...")
     headers = {
@@ -47,17 +45,16 @@ def generate_ai_background():
     image = Image.open(BytesIO(response.content))
     return image
 
-# Create a random t-shirt text overlay
 def create_text_overlay(text, width, height):
     print("Creating text overlay...")
     overlay = Image.new('RGBA', (width, height), (255, 255, 255, 0))
     draw = ImageDraw.Draw(overlay)
 
     font_size = random.randint(30, 60)
-    font = ImageFont.truetype("arial.ttf", font_size)  # Make sure arial.ttf or another font is available
+    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"  # common in Linux GitHub runners
+    font = ImageFont.truetype(font_path, font_size)
 
     textwidth, textheight = draw.textsize(text, font=font)
-
     x = (width - textwidth) / 2
     y = height - textheight - 20
 
@@ -65,7 +62,6 @@ def create_text_overlay(text, width, height):
 
     return overlay
 
-# Upload to Google Drive
 def upload_to_drive(filepath):
     print("Uploading to Google Drive...")
 
@@ -78,7 +74,7 @@ def upload_to_drive(filepath):
 
     file_metadata = {
         'name': os.path.basename(filepath),
-        'parents': [os.getenv("DRIVE_FOLDER_ID")]  # Folder ID from GitHub Secrets
+        'parents': [os.getenv("DRIVE_FOLDER_ID")]
     }
     media = MediaFileUpload(filepath, mimetype='image/png')
 
@@ -90,7 +86,6 @@ def upload_to_drive(filepath):
 
     print(f"File uploaded successfully with ID: {uploaded_file['id']}")
 
-# Main function
 def main():
     try:
         bg_image = generate_ai_background()

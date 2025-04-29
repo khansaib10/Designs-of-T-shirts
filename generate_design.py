@@ -44,9 +44,9 @@ def create_random_design():
 
     # 3. Pick a random font
     fonts = [
-        "CalSans-Regular.ttf"
-        "SomeOtherFont.ttf",  # Upload more fonts and list them here
-        "Tagesschrift-Regular.ttf",
+        "CalSans-Regular.ttf",
+        "RobotoMono-VariableFont_wght.ttf",  # Upload more fonts and list them here
+        "Tagesschrift-Regular.ttf"
     ]
     selected_font = random.choice(fonts)
     fontsize = random.randint(350, 600)

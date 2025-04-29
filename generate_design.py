@@ -21,7 +21,7 @@ def create_random_design():
     draw = ImageDraw.Draw(img)
 
     # 1. Draw random shapes first
-    for _ in range(random.randint(5, 10)):  # Draw 5 to 10 shapes
+    for _ in range(random.randint(5, 10)):
         shape_type = random.choice(['circle', 'rectangle', 'line'])
         color = random.choice(['#FF5733', '#33FF57', '#3357FF', '#F333FF', '#33FFF6', '#FFF633'])
         x1 = random.randint(0, size[0])
@@ -42,11 +42,18 @@ def create_random_design():
     words = ['Dream', 'Freedom', 'Hustle', 'Create', 'Inspire', 'Legend', 'Fearless', 'Ambition', 'Grind', 'Passion']
     txt = random.choice(words)
 
-    # 3. Load the font
+    # 3. Pick a random font
+    fonts = [
+        "CalSans-Regular.ttf"
+        "SomeOtherFont.ttf",  # Upload more fonts and list them here
+        "Tagesschrift-Regular.ttf",
+    ]
+    selected_font = random.choice(fonts)
     fontsize = random.randint(350, 600)
     try:
-        fnt = ImageFont.truetype("Tagesschrift-Regular.ttf", fontsize)
+        fnt = ImageFont.truetype(selected_font, fontsize)
     except:
+        print(f"Failed loading font {selected_font}, using default font.")
         fnt = ImageFont.load_default()
 
     # 4. Measure text size and center it

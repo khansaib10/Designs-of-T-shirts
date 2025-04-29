@@ -18,20 +18,22 @@ credentials = service_account.Credentials.from_service_account_info(
 )
 drive_service = build("drive", "v3", credentials=credentials)
 
-# Working Model (small, free model)
-api_url = "https://api-inference.huggingface.co/models/lambdalabs/sd-image-variations-diffusers"
+# Working Model (Free HuggingFace Hosted Inference)
+api_url = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1"
 
 def generate_ai_background():
     print("Generating AI Background...")
     headers = {"Authorization": f"Bearer {huggingface_token}"}
-    prompt = "artistic colorful t-shirt design background, trending, vibrant"
-    payload = {"inputs": prompt}
+    payload = {
+        "inputs": "a beautiful colorful t-shirt design, fantasy style, high quality, trending on artstation"
+    }
 
     response = requests.post(api_url, headers=headers, json=payload)
 
     if response.status_code != 200:
         raise Exception(f"AI generation failed: {response.text}")
 
+    # HuggingFace returns binary image
     image = Image.open(BytesIO(response.content))
     return image
 
@@ -43,14 +45,10 @@ def upload_to_drive(file_path, folder_id="root"):
 
 def main():
     try:
-        # Generate and Save Image
         bg_image = generate_ai_background()
-        bg_image_path = "background_image.png"
-        bg_image.save(bg_image_path)
-
-        # Upload to Google Drive
-        upload_to_drive(bg_image_path)
-
+        file_path = "background_image.png"
+        bg_image.save(file_path)
+        upload_to_drive(file_path)
     except Exception as e:
         print(f"An error occurred: {e}")
 

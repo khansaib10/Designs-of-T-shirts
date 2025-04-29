@@ -1,104 +1,78 @@
-import random
-import string
-from PIL import Image, ImageDraw, ImageFont
 import os
-import json
-import io
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
-from google.oauth2 import service_account
+import random
+import requests
+from io import BytesIO
+from PIL import Image, ImageDraw, ImageFont
+from pydrive2.auth import GoogleAuth
+from pydrive2.drive import GoogleDrive
 
-# ─── Google Drive Setup ─────────────────────────────────────────────────────
-credentials_info = json.loads(os.environ['GOOGLE_CREDENTIALS'])
-credentials = service_account.Credentials.from_service_account_info(credentials_info)
-service = build('drive', 'v3', credentials=credentials)
-folder_id = '1jnHnezrLNTl3ebmlt2QRBDSQplP_Q4wh'  # Your Drive folder ID
+# Settings
+FOLDER_ID = '1jnHnezrLNTl3ebmlt2QRBDSQplP_Q4wh'  # your Google Drive folder id
+HUGGINGFACE_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
 
-# ─── Quotes List ────────────────────────────────────────────────────────────
-quotes = [
-    "Dream Big", "Stay Strong", "Work Hard", "Never Quit",
-    "Chase Dreams", "Be Fearless", "Rise Above", "Stay Humble",
-    "Create Yourself", "Bold Moves", "Fear Less", "Mind Over Matter",
-    "Be Your Best", "Good Vibes", "Limitless", "Focused Energy",
-    "Make It Happen", "Stay Positive", "Push Yourself", "Stay Focused"
-]
-
-# ─── Fonts List ─────────────────────────────────────────────────────────────
-fonts = [
+# Fonts (Make sure these font files are in your repo)
+FONTS = [
     "CalSans-Regular.ttf",
     "RobotoMono-VariableFont_wght.ttf",
     "Tagesschrift-Regular.ttf"
 ]
 
-# ─── Design Generation ──────────────────────────────────────────────────────
-def create_premium_design():
-    size = (3000, 3000)
-    img = Image.new('RGBA', size, (0, 0, 0, 0))  # Transparent background
-    draw = ImageDraw.Draw(img)
+# List of random quotes or words
+TEXTS = [
+    "Dream Big", "Stay Wild", "Good Vibes", "Be Different", "No Limits", "Fearless", "Born to Shine"
+]
 
-    # 1. Select random quote and font
-    quote = random.choice(quotes)
-    words = quote.split()
+def generate_ai_background():
+    url = "https://api-inference.huggingface.co/models/CompVis/stable-diffusion-v1-4"
+    headers = {"Authorization": f"Bearer {HUGGINGFACE_TOKEN}"}
+    payload = {"inputs": "abstract colorful background, 3000x3000, hd, no watermark, no text, t-shirt design"}
     
-    # 2. Random font and size
-    font_file = random.choice(fonts)
-    fontsize = random.randint(350, 550)
-    fnt = ImageFont.truetype(font_file, fontsize)
-
-    # 3. Split text if 3 words
-    if len(words) > 2:
-        quote = f"{words[0]} {words[1]}\n{words[2]}"
+    response = requests.post(url, headers=headers, json=payload)
+    if response.status_code != 200:
+        raise Exception(f"Failed to generate image: {response.text}")
     
-    # 4. Calculate text size
-    bbox = draw.textbbox((0, 0), quote, font=fnt, align='center')
-    text_width = bbox[2] - bbox[0]
-    text_height = bbox[3] - bbox[1]
+    image = Image.open(BytesIO(response.content))
+    return image
 
-    # 5. Center position
-    x = (size[0] - text_width) / 2
-    y = (size[1] - text_height) / 2
+def add_text_on_image(image):
+    draw = ImageDraw.Draw(image)
+    font_path = random.choice(FONTS)
+    font = ImageFont.truetype(font_path, size=250)
+    text = random.choice(TEXTS)
+    
+    # Get text size
+    text_width, text_height = draw.textsize(text, font=font)
+    image_width, image_height = image.size
+    
+    # Position text at center
+    position = ((image_width - text_width) / 2, (image_height - text_height) / 2)
+    
+    draw.text(position, text, font=font, fill="white")  # White color text
+    return image
 
-    # 6. Draw text
-    text_color = random.choice(["#000000", "#ffffff"])  # Black or White
-    draw.text((x, y), quote, font=fnt, fill=text_color, align="center")
+def upload_to_drive(filepath):
+    gauth = GoogleAuth()
+    gauth.LocalWebserverAuth()
+    drive = GoogleDrive(gauth)
+    
+    file_drive = drive.CreateFile({'parents': [{'id': FOLDER_ID}]})
+    file_drive.SetContentFile(filepath)
+    file_drive.Upload()
+    print(f"Uploaded {filepath} to Google Drive.")
 
-    # 7. Draw underline
-    underline_width = text_width * 0.6
-    underline_height = 10  # thickness
-    underline_x1 = (size[0] - underline_width) / 2
-    underline_y1 = y + text_height + 30
-    underline_x2 = underline_x1 + underline_width
-    underline_y2 = underline_y1 + underline_height
-    draw.rectangle([underline_x1, underline_y1, underline_x2, underline_y2], fill=text_color)
+def main():
+    print("Generating AI Background...")
+    background = generate_ai_background()
+    
+    print("Adding Text...")
+    final_image = add_text_on_image(background)
+    
+    filename = f"design_{random.randint(1000,9999)}.png"
+    filepath = os.path.join(os.getcwd(), filename)
+    final_image.save(filepath, format="PNG", quality=100)
+    
+    print("Uploading to Drive...")
+    upload_to_drive(filepath)
 
-    # 8. Optional minimal decoration (stars/dots)
-    if random.random() < 0.5:  # 50% chance
-        # Draw small star/dot at top center
-        deco_size = 20
-        deco_x = size[0] / 2 - deco_size / 2
-        deco_y = y - 100
-        draw.ellipse([deco_x, deco_y, deco_x + deco_size, deco_y + deco_size], fill=text_color)
-
-    # 9. Save as PNG 300DPI
-    img_byte_arr = io.BytesIO()
-    img.save(img_byte_arr, format='PNG', dpi=(300, 300))
-    img_byte_arr.seek(0)
-
-    return img_byte_arr
-
-# ─── Upload to Google Drive ──────────────────────────────────────────────────
-def upload_to_drive(file_bytes, filename):
-    metadata = {
-        'name': filename,
-        'parents': [folder_id],
-        'mimeType': 'image/png'
-    }
-    media = MediaIoBaseUpload(file_bytes, mimetype='image/png')
-    file = service.files().create(body=metadata, media_body=media, fields='id').execute()
-    print(f"Uploaded {filename} as ID: {file.get('id')}")
-
-# ─── Main ────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    img_stream = create_premium_design()
-    fname = f"design_{random.randint(1000,9999)}.png"
-    upload_to_drive(img_stream, fname)
+    main()

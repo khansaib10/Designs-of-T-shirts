@@ -2,6 +2,7 @@ import os
 import json
 import random
 import string
+import time
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
@@ -56,12 +57,19 @@ def generate_ai_background():
     data = response.json()
     request_id = data['id']
 
-    # Poll for status
+    # Poll for status with rate limiting handling (retry after delay)
     print("⏳ Waiting for generation...")
 
-    while True:
+    retries = 5  # Retry 5 times before giving up
+    while retries > 0:
         status_url = f"https://stablehorde.net/api/v2/generate/status/{request_id}"
         status_resp = requests.get(status_url, headers=headers)
+
+        if status_resp.status_code == 429:
+            print("❌ Rate limit hit (429). Retrying after delay...")
+            time.sleep(10)  # Wait 10 seconds before retrying
+            retries -= 1
+            continue
 
         if status_resp.status_code != 200:
             print(f"❌ Error checking status: {status_resp.status_code}")
@@ -89,8 +97,9 @@ def generate_ai_background():
             print("✅ AI Background generated and saved as background.png")
             return "background.png"
 
-        import time
-        time.sleep(5)
+        time.sleep(5)  # Wait 5 seconds before checking status again
+
+    raise Exception("❌ Failed to generate background image after several attempts.")
 
 # Function to create a T-shirt design
 def create_design(bg_image_path, text):
@@ -118,6 +127,8 @@ def create_design(bg_image_path, text):
 def main():
     try:
         bg_image = generate_ai_background()
+        if not bg_image:
+            raise Exception("❌ Background generation failed, no image returned.")
         slogan = generate_random_text()
         final_design = create_design(bg_image, slogan)
 

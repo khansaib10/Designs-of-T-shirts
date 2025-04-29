@@ -8,64 +8,62 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 from google.oauth2 import service_account
 
-# Setup Google Drive API
+# ─── Google Drive Setup ──────────────────────────────────────────────────────────
 credentials_info = json.loads(os.environ['GOOGLE_CREDENTIALS'])
 credentials = service_account.Credentials.from_service_account_info(credentials_info)
 service = build('drive', 'v3', credentials=credentials)
+folder_id = '1jnHnezrLNTl3ebmlt2QRBDSQplP_Q4wh'  # Your Drive folder
 
-# Your Google Drive folder ID
-folder_id = '1jnHnezrLNTl3ebmlt2QRBDSQplP_Q4wh'
-
+# ─── Design Generation ──────────────────────────────────────────────────────────
 def create_random_design():
-    # Create transparent background
-    img = Image.new('RGBA', (1080, 1080), (0, 0, 0, 0))  # Transparent background
+    # 1) Bigger canvas for print-quality
+    size = (3000, 3000)
+    img = Image.new('RGBA', size, (0, 0, 0, 0))  # Transparent
     draw = ImageDraw.Draw(img)
 
-    # Random motivational words
+    # 2) Pick a motivational word
     words = ['Dream', 'Freedom', 'Hustle', 'Create', 'Inspire', 'Legend', 'Fearless', 'Ambition', 'Grind', 'Passion']
     txt = random.choice(words)
 
-    # Random big font size
-    fontsize = random.randint(150, 250)
+    # 3) Choose font size (proportional to canvas)
+    fontsize = random.randint(350, 600)
 
-    # Load font (make sure Tagesschrift-Regular.ttf is uploaded to your repo)
+    # 4) Load your Tagesschrift font
     try:
-        fnt = ImageFont.truetype("Tagesschrift-Regular.ttf", fontsize)  # Use your uploaded font name here
-    except:
+        fnt = ImageFont.truetype("Tagesschrift-Regular.ttf", fontsize)
+    except Exception as e:
+        print("Font load failed, using default.", e)
         fnt = ImageFont.load_default()
 
-    # Calculate text size properly
+    # 5) Measure text and center it
     bbox = draw.textbbox((0, 0), txt, font=fnt)
-    tw = bbox[2] - bbox[0]
-    th = bbox[3] - bbox[1]
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    x = (size[0] - tw) / 2
+    y = (size[1] - th) / 2
 
-    # Draw text centered
-    draw.text(
-        ((1080 - tw) / 2, (1080 - th) / 2),
-        txt,
-        font=fnt,
-        fill=random.choice(['#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF'])  # Bright colors
-    )
+    # 6) Draw the text in a bright color
+    color = random.choice(['#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF'])
+    draw.text((x, y), txt, font=fnt, fill=color)
 
-    # Save to memory
-    img_byte_arr = io.BytesIO()
-    img.save(img_byte_arr, format='PNG')
-    img_byte_arr.seek(0)
+    # 7) Save to a BytesIO with 300 DPI
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='PNG', dpi=(300, 300))
+    img_bytes.seek(0)
+    return img_bytes
 
-    return img_byte_arr
-
-# Upload to Google Drive
+# ─── Upload to Google Drive ────────────────────────────────────────────────────
 def upload_to_drive(file_bytes, filename):
-    file_metadata = {
+    metadata = {
         'name': filename,
         'parents': [folder_id],
         'mimeType': 'image/png'
     }
     media = MediaIoBaseUpload(file_bytes, mimetype='image/png')
-    file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-    print(f"Uploaded file with ID: {file.get('id')}")
+    file = service.files().create(body=metadata, media_body=media, fields='id').execute()
+    print(f"Uploaded {filename} as ID: {file.get('id')}")
 
+# ─── Main ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    file = create_random_design()
-    filename = f"design_{random.randint(1000,9999)}.png"
-    upload_to_drive(file, filename)
+    img_stream = create_random_design()
+    fname = f"design_{random.randint(1000,9999)}.png"
+    upload_to_drive(img_stream, fname)

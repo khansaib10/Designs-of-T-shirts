@@ -65,24 +65,29 @@ def create_design(quote):
 
 # Upload image to Google Drive
 def upload_to_drive(image, filename):
-    SCOPES = ['https://www.googleapis.com/auth/drive.file']
+    # Get base64-encoded credentials from environment
+    encoded_credentials = os.environ['GOOGLE_CREDENTIALS']
 
-    # Read credentials from environment variable
-    credentials_info = json.loads(os.environ['GOOGLE_CREDENTIALS'])
-    credentials = service_account.Credentials.from_service_account_info(
-        credentials_info, scopes=SCOPES
-    )
+    # Decode from base64
+    credentials_json = base64.b64decode(encoded_credentials).decode('utf-8')
 
-    drive_service = build('drive', 'v3', credentials=credentials)
+    # Load JSON credentials
+    credentials_info = json.loads(credentials_json)
 
-    # Save image to memory
-    with io.BytesIO() as image_stream:
-        image.save(image_stream, format='PNG')
-        image_stream.seek(0)
-        media = MediaIoBaseUpload(image_stream, mimetype='image/png', resumable=True)
+    # Authenticate to Google Drive
+    credentials = service_account.Credentials.from_service_account_info(credentials_info)
+    service = build('drive', 'v3', credentials=credentials)
 
-        file_metadata = {'name': filename, 'mimeType': 'image/png'}
-        drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    # Save image to a BytesIO buffer
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+
+    # Upload to Google Drive
+    file_metadata = {'name': filename}
+    media = MediaIoBaseUpload(buffer, mimetype='image/png')
+    service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+
 
 # Main function
 def main():

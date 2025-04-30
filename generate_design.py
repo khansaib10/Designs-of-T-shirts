@@ -68,7 +68,7 @@ def upload_to_drive(image, filename):
     SCOPES = ['https://www.googleapis.com/auth/drive.file']
 
     # Read credentials from environment variable
-    credentials_info = json.loads(os.environ['GDRIVE_CREDENTIALS'])
+    credentials_info = json.loads(os.environ['GOOGLE_CREDENTIALS'])
     credentials = service_account.Credentials.from_service_account_info(
         credentials_info, scopes=SCOPES
     )

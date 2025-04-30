@@ -9,11 +9,12 @@ import requests
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 from google.oauth2 import service_account
+import time  # Corrected to use the time module
 
 # Fetch a random quote from quotable.io API
 def get_quote():
     try:
-        response = requests.get("https://api.quotable.io/random")
+        response = requests.get("https://api.quotable.io/random", verify=False)  # Disabled SSL verification for now
         response.raise_for_status()  # Raise an exception for HTTP errors
         quote = response.json()["content"]
         return quote
@@ -75,7 +76,7 @@ def main():
     image = create_design(quote)
 
     # Generate a unique filename using timestamp
-    filename = f"quote_{int(random.time())}.png"
+    filename = f"quote_{int(time.time())}.png"  # Fixed to use time.time()
 
     # Upload the design to Google Drive
     upload_to_drive(image, filename)

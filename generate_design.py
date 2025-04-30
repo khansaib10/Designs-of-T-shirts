@@ -1,4 +1,5 @@
 import os
+import time
 import textwrap
 import requests
 from PIL import Image, ImageDraw, ImageFont
@@ -7,13 +8,13 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 # Config
-QUOTE_API = "https://api.quotable.io/random?maxLength=100"
-IMG_SIZE = (1024, 1024)
-BG_COLOR = (0, 0, 0)        # black background
-TEXT_COLOR = (255, 255, 255)  # white text
-FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-FONT_SIZE = 48
-MAX_LINE_WIDTH = 30         # characters per line for wrap
+QUOTE_API        = "https://api.quotable.io/random?maxLength=100"
+IMG_SIZE         = (1024, 1024)
+BG_COLOR         = (0, 0, 0)           # black background
+TEXT_COLOR       = (255, 255, 255)     # white text
+FONT_PATH        = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+FONT_SIZE        = 48
+MAX_LINE_WIDTH   = 30                  # chars per wrapped line
 
 # Drive setup
 DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")
@@ -26,7 +27,6 @@ def get_random_quote():
         r.raise_for_status()
         return r.json()["content"]
     except:
-        # fallback
         return "Stay positive and keep moving forward"
 
 def create_quote_image(quote):
@@ -37,13 +37,13 @@ def create_quote_image(quote):
     except:
         font = ImageFont.load_default()
 
-    # wrap text
+    # wrap text into lines
     lines = textwrap.wrap(quote, width=MAX_LINE_WIDTH)
     total_height = len(lines) * (FONT_SIZE + 10)
     y = (IMG_SIZE[1] - total_height) / 2
 
     for line in lines:
-        w, h = draw.textbbox((0,0), line, font=font)[2:]
+        w, h = draw.textbbox((0, 0), line, font=font)[2:]
         x = (IMG_SIZE[0] - w) / 2
         draw.text((x, y), line, fill=TEXT_COLOR, font=font)
         y += FONT_SIZE + 10
@@ -72,7 +72,9 @@ def main():
     print("Quote:", quote)
 
     img = create_quote_image(quote)
-    filename = f"quote_{int(textwrap.time.time())}.png"
+
+    # Use time.time() instead of textwrap.time
+    filename = f"quote_{int(time.time())}.png"
     img.save(filename)
     print("Saved image:", filename)
 

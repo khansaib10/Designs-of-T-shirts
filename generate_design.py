@@ -1,142 +1,123 @@
 import os
 import json
-import random
-import string
 import time
 import requests
 from PIL import Image, ImageDraw, ImageFont
+from io import BytesIO
 
-# Load environment variables
+# Get environment variables
 HORDE_API_KEY = os.getenv("HORDE_API_KEY")
 GOOGLE_CREDENTIALS = os.getenv("GOOGLE_CREDENTIALS")
+UPLOAD_FOLDER_ID = os.getenv("UPLOAD_FOLDER_ID")
 
 if not HORDE_API_KEY:
-    raise Exception("❌ HORDE_API_KEY environment variable is missing!")
+    raise Exception("HORDE_API_KEY is missing in environment variables.")
+if not GOOGLE_CREDENTIALS:
+    raise Exception("GOOGLE_CREDENTIALS is missing in environment variables.")
+if not UPLOAD_FOLDER_ID:
+    raise Exception("UPLOAD_FOLDER_ID is missing in environment variables.")
 
-# Function to generate a random T-shirt slogan
-def generate_random_text():
-    words = ["Adventure", "Dream", "Freedom", "Passion", "Inspire", "Believe", "Create", "Explore", "Imagine", "Shine"]
-    return random.choice(words)
-
-# Function to generate a unique file name
-def generate_unique_filename():
-    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=8)) + ".png"
-
-# Function to generate an AI background using Stable Horde
-def generate_ai_background():
+def generate_ai_background(prompt="Minimalist t-shirt design, vector art, clean, simple, professional"):
     print("▶️ Submitting background generation to Stable Horde...")
-    url = "https://stablehorde.net/api/v2/generate/async"
-
-    payload = {
-        "prompt": "minimalist modern abstract background, colorful, artistic design, t-shirt print, white background",
-        "params": {
-            "sampler_name": "k_euler",
-            "cfg_scale": 7,
-            "denoising_strength": 0.75,
-            "seed": str(random.randint(1, 1000000)),  # FIX: make seed a string
-            "height": 512,
-            "width": 512,
-            "steps": 30
-        },
-        "nsfw": False,
-        "censor_nsfw": True,
-        "models": ["deliberate_v2"],
-        "r2": True
-    }
 
     headers = {
         "apikey": HORDE_API_KEY,
-        "Client-Agent": "TShirtBot/1.0"
+        "Client-Agent": "TshirtDesignBot/1.0"
     }
 
-    response = requests.post(url, json=payload, headers=headers)
+    payload = {
+        "prompt": prompt,
+        "params": {
+            "n": 1,
+            "width": 512,
+            "height": 512,
+            "steps": 20,
+            "seed": str(int(time.time()))
+        },
+        "model": "deliberate_v2",
+        "nsfw": False,
+        "censor_nsfw": True
+    }
 
-    if response.status_code != 202:
-        raise Exception(f"❌ Error: {response.status_code} - {response.text}")
+    try:
+        submit_response = requests.post("https://stablehorde.net/api/v2/generate/async", headers=headers, json=payload)
+        submit_response.raise_for_status()
+        task_id = submit_response.json()["id"]
+    except Exception as e:
+        raise Exception(f"❌ Error submitting generation: {e}")
 
-    data = response.json()
-    request_id = data['id']
-
-    # Poll for status with rate limiting handling (retry after delay)
     print("⏳ Waiting for generation...")
 
-    retries = 5  # Retry 5 times before giving up
-    while retries > 0:
-        status_url = f"https://stablehorde.net/api/v2/generate/status/{request_id}"
-        status_resp = requests.get(status_url, headers=headers)
-
-        if status_resp.status_code == 429:
+    tries = 0
+    while tries < 50:
+        time.sleep(10)
+        status_response = requests.get(f"https://stablehorde.net/api/v2/generate/status/{task_id}", headers=headers)
+        if status_response.status_code == 429:
             print("❌ Rate limit hit (429). Retrying after delay...")
-            time.sleep(10)  # Wait 10 seconds before retrying
-            retries -= 1
+            time.sleep(20)
+            tries += 1
             continue
 
-        if status_resp.status_code != 200:
-            print(f"❌ Error checking status: {status_resp.status_code}")
-            break
-
-        status_data = status_resp.json()
-
-        # Check if 'done' key exists in the response data
-        if 'done' not in status_data:
-            print("❌ Error: 'done' key not found in response")
-            break
-
-        if status_data['done']:
-            generations = status_data.get('generations', [])
-            if not generations:
-                print("❌ Error: No generations found.")
-                break
-
-            img_url = generations[0]['img']
-            img_resp = requests.get(f"https://stablehorde.net{img_url}")
-
-            with open("background.png", "wb") as f:
-                f.write(img_resp.content)
-
-            print("✅ AI Background generated and saved as background.png")
-            return "background.png"
-
-        time.sleep(5)  # Wait 5 seconds before checking status again
+        status = status_response.json()
+        if status.get("done"):
+            if "generations" in status and len(status["generations"]) > 0:
+                image_url = status["generations"][0]["img"]
+                image_data = requests.get(image_url).content
+                print("✅ Background generated successfully!")
+                return Image.open(BytesIO(image_data))
+            else:
+                raise Exception("❌ No generations found.")
+        tries += 1
 
     raise Exception("❌ Failed to generate background image after several attempts.")
 
-# Function to create a T-shirt design
-def create_design(bg_image_path, text):
-    print("🎨 Creating final design...")
-    img = Image.open(bg_image_path)
-    draw = ImageDraw.Draw(img)
-
+def add_text_to_image(image, text="Stay Wild"):
+    print("🖌 Adding text on design...")
+    draw = ImageDraw.Draw(image)
+    font_size = int(image.width / 10)
     try:
-        font = ImageFont.truetype("arial.ttf", 40)
+        font = ImageFont.truetype("arial.ttf", font_size)
     except:
         font = ImageFont.load_default()
 
     text_width, text_height = draw.textsize(text, font=font)
-    x = (img.width - text_width) / 2
-    y = img.height - text_height - 20
+    x = (image.width - text_width) / 2
+    y = image.height - text_height - 20
 
-    draw.text((x, y), text, font=font, fill=(0, 0, 0))
+    draw.text((x, y), text, font=font, fill="black")
+    return image
 
-    filename = generate_unique_filename()
-    img.save(filename)
-    print(f"✅ Final design saved as {filename}")
-    return filename
+def upload_to_drive(file_path, file_name):
+    print("☁️ Uploading design to Google Drive...")
 
-# Main function
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload
+
+    credentials = service_account.Credentials.from_service_account_info(json.loads(GOOGLE_CREDENTIALS))
+    service = build('drive', 'v3', credentials=credentials)
+
+    file_metadata = {
+        "name": file_name,
+        "parents": [UPLOAD_FOLDER_ID]
+    }
+    media = MediaFileUpload(file_path, mimetype="image/png")
+    file = service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+
+    print(f"✅ Uploaded successfully: {file.get('id')}")
+
 def main():
     try:
         bg_image = generate_ai_background()
-        if not bg_image:
-            raise Exception("❌ Background generation failed, no image returned.")
-        slogan = generate_random_text()
-        final_design = create_design(bg_image, slogan)
+        final_image = add_text_to_image(bg_image)
 
-        # Done! You can later upload it to Google Drive here if you want
-        print(f"🎉 Finished! Design ready: {final_design}")
+        output_filename = "final_design.png"
+        final_image.save(output_filename)
+
+        upload_to_drive(output_filename, output_filename)
 
     except Exception as e:
-        print(f"❌ An error occurred: {str(e)}")
+        print(f"❌ An error occurred: {e}")
 
 if __name__ == "__main__":
     main()

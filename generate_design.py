@@ -1,67 +1,59 @@
 import os
-import time
-import base64
-import random
-import string
 import requests
+from PIL import Image
 from io import BytesIO
-from PIL import Image, ImageDraw, ImageFont
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
-# Craiyon v1 endpoint (no auth needed)
-CRAIYON_URL = "https://backend.craiyon.com/generate"
+# Fetch a design (adjust as needed for your API)
+def fetch_craiyon(prompt):
+    url = "https://api.craiyon.com/v3"
+    response = requests.post(url, json={"prompt": prompt})
+    response.raise_for_status()  # Will raise an exception for bad responses
+    return response.json()
 
-def fetch_craiyon_images(prompt: str):
-    """Call Craiyon v1 API, return list of PIL.Images."""
-    print(f"🖌️  Sending prompt to Craiyon: {prompt!r}")
-    resp = requests.post(CRAIYON_URL, json={"prompt": prompt}, timeout=120)
-    resp.raise_for_status()
-    data = resp.json()
-    images = []
-    for b64 in data.get("images", []):
-        img = Image.open(BytesIO(base64.b64decode(b64)))
-        images.append(img)
-    return images
+# Upload image to Google Drive
+def upload_to_drive(image_path, folder_id):
+    # Authenticate with Google Drive
+    creds = service_account.Credentials.from_service_account_info(
+        os.getenv("GOOGLE_CREDENTIALS")
+    )
+    service = build('drive', 'v3', credentials=creds)
 
-def save_images(images):
-    """Save a list of PIL.Images to numbered PNG files."""
-    saved = []
-    for i, img in enumerate(images):
-        fn = f"design_{int(time.time())}_{i}.png"
-        img.save(fn)
-        print(f"✅ Saved {fn}")
-        saved.append(fn)
-    return saved
+    # Upload the file
+    media = MediaFileUpload(image_path, mimetype='image/png')
+    request = service.files().create(
+        media_body=media,
+        body={
+            'name': os.path.basename(image_path),
+            'parents': [folder_id]
+        }
+    )
+    file = request.execute()
+    return file['id']
 
-def overlay_text(img: Image.Image, text: str):
-    """Overlay centered text with a black shadow."""
-    draw = ImageDraw.Draw(img)
-    W, H = img.size
-    font_size = W // 12
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
-    except:
-        font = ImageFont.load_default()
-    tw, th = draw.textsize(text, font=font)
-    x, y = (W - tw)//2, H - th - 20
-    for dx, dy in [(-2,-2),(2,-2),(-2,2),(2,2)]:
-        draw.text((x+dx, y+dy), text, font=font, fill="black")
-    draw.text((x, y), text, font=font, fill="white")
-    return img
-
+# Main function to generate and upload the design
 def main():
     prompt = "Minimalist geometric t-shirt design, bold lines and colors"
-    images = fetch_craiyon_images(prompt)
+    print(f"Generating T-shirt design for prompt: {prompt}")
 
-    # Optionally overlay text on each design:
-    final_files = []
-    for img in images:
-        slogan = random.choice(["Dream Big","Stay Wild","Good Vibes","Be Yourself"])
-        img = overlay_text(img.convert("RGBA"), slogan)
-        # Convert back to RGB before saving
-        img = img.convert("RGB")
-        final_files.extend(save_images([img]))
+    try:
+        # Get the design from Craiyon (or another model)
+        images = fetch_craiyon(prompt)
+        image_data = images['images'][0]  # Assuming the first image is what we want
 
-    print("🎉 All done. Generated files:", final_files)
+        # Convert image data to PIL Image
+        img = Image.open(BytesIO(image_data))
+        img.save('design.png')
+
+        # Upload to Google Drive
+        folder_id = os.getenv("DRIVE_FOLDER_ID")
+        upload_to_drive('design.png', folder_id)
+        print("Design uploaded to Google Drive successfully.")
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     main()

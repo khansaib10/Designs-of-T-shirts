@@ -1,57 +1,83 @@
 import os
-import time
-import json
-import requests
-import string
 import random
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
+import time
+import requests
+from PIL import Image, ImageDraw, ImageFont
+from pydrive.auth import GoogleAuth
+from pydrive.drive import GoogleDrive
 
-# ─── Configuration ────────────────────────────────────────────────────────────
-DRIVE_FOLDER_ID    = os.getenv("DRIVE_FOLDER_ID")
-GOOGLE_CREDENTIALS = os.getenv("GOOGLE_CREDENTIALS")
-if not DRIVE_FOLDER_ID or not GOOGLE_CREDENTIALS:
-    raise Exception("Please set DRIVE_FOLDER_ID and GOOGLE_CREDENTIALS env vars.")
-# ────────────────────────────────────────────────────────────────────────────────
+# Authenticate with Google Drive
+gauth = GoogleAuth()
+gauth.LocalWebserverAuth()
+drive = GoogleDrive(gauth)
 
-def fetch_quote(max_length=50):
-    """Fetch a single random quote up to max_length characters."""
-    resp = requests.get(f"https://api.quotable.io/random?maxLength={max_length}", timeout=10)
-    resp.raise_for_status()
-    data = resp.json()
-    return f"{data['content']} —{data['author']}"
+# Settings
+WIDTH = 1024
+HEIGHT = 1024
+FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"  # You can change font if you want
+FONT_SIZE = 60
+QUOTE_API = "https://api.quotable.io/random?maxLength=50"
 
-def save_quote_to_file(quote):
-    """Save quote to a timestamped .txt file."""
-    ts = int(time.time())
-    fn = f"quote_{ts}.txt"
-    with open(fn, "w", encoding="utf-8") as f:
-        f.write(quote)
-    return fn
+# Drive Folder ID (Must set in GitHub Actions secrets as DRIVE_FOLDER_ID)
+DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")
+if not DRIVE_FOLDER_ID:
+    raise Exception("DRIVE_FOLDER_ID is missing in environment variables.")
 
-def upload_to_drive(filepath):
-    """Upload a local file to Google Drive folder."""
-    creds_info = json.loads(GOOGLE_CREDENTIALS)
-    creds = service_account.Credentials.from_service_account_info(
-        creds_info, scopes=["https://www.googleapis.com/auth/drive.file"]
-    )
-    service = build("drive", "v3", credentials=creds)
-    file_metadata = {"name": os.path.basename(filepath), "parents": [DRIVE_FOLDER_ID]}
-    media = MediaFileUpload(filepath, mimetype="text/plain")
-    file = service.files().create(body=file_metadata, media_body=media, fields="id").execute()
-    return file.get("id")
+def fetch_quote():
+    """Fetch a random quote."""
+    try:
+        resp = requests.get(QUOTE_API, timeout=10, verify=False)
+        resp.raise_for_status()
+        data = resp.json()
+        return f"{data['content']} —{data['author']}"
+    except Exception as e:
+        print(f"Error fetching quote: {e}")
+        return "Stay Positive —Unknown"
+
+def create_text_image(text):
+    """Create an image with the given text."""
+    img = Image.new('RGB', (WIDTH, HEIGHT), color=(255, 255, 255))
+    draw = ImageDraw.Draw(img)
+
+    try:
+        font = ImageFont.truetype(FONT_PATH, FONT_SIZE)
+    except IOError:
+        font = ImageFont.load_default()
+
+    text_width, text_height = draw.textbbox((0, 0), text, font=font)[2:]
+    x = (WIDTH - text_width) / 2
+    y = (HEIGHT - text_height) / 2
+
+    draw.text((x, y), text, font=font, fill=(0, 0, 0))
+
+    return img
+
+def upload_to_drive(file_path, file_name):
+    """Upload a file to Google Drive."""
+    file = drive.CreateFile({
+        'title': file_name,
+        'parents': [{'id': DRIVE_FOLDER_ID}]
+    })
+    file.SetContentFile(file_path)
+    file.Upload()
+    print(f"✅ Uploaded {file_name} to Google Drive.")
 
 def main():
-    try:
-        quote = fetch_quote(max_length=50)
-        print("Fetched quote:", quote)
-        filename = save_quote_to_file(quote)
-        print("Saved locally as", filename)
-        file_id = upload_to_drive(filename)
-        print("Uploaded to Drive with ID:", file_id)
-    except Exception as e:
-        print("Error:", e)
+    quote = fetch_quote()
+    print(f"🎯 Quote: {quote}")
+
+    img = create_text_image(quote)
+    file_name = f"design_{int(time.time())}.png"
+    file_path = f"./{file_name}"
+
+    img.save(file_path)
+    print(f"🎨 Design saved locally as {file_name}")
+
+    upload_to_drive(file_path, file_name)
+
+    # Cleanup
+    os.remove(file_path)
+    print(f"🧹 Local file {file_name} deleted.")
 
 if __name__ == "__main__":
     main()

@@ -2,6 +2,7 @@ import os
 import time
 import textwrap
 import requests
+import random
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
 from google.oauth2 import service_account
@@ -9,15 +10,15 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 # Config
-QUOTE_API        = "https://api.quotable.io/random?maxLength=100"
-PIXABAY_API_KEY  = "50023073-76bc3ff20218626ffd04d9237"
-IMG_SIZE = (1200, 1600)  # Wider canvas for better T-shirt designs
-BG_COLOR = (255, 255, 255, 0)  # Transparent background (no need to touch)
-TEXT_COLOR = (0, 0, 0)         # Black text
-FONT_SIZE = 56                 # Slightly bigger font size for bigger canvas
-MAX_LINE_WIDTH = 25            # Fewer words per line = better fit
-
-MAX_LINE_WIDTH   = 30
+QUOTE_API = "https://api.quotable.io/random?maxLength=100"
+PIXABAY_API_KEY = "50023073-76bc3ff20218626ffd04d9237"
+PIXABAY_URL = "https://pixabay.com/api/"
+IMG_SIZE = (1200, 1600)
+TEXT_COLOR = (0, 0, 0)
+FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+FONT_SIZE = 80
+MAX_LINE_WIDTH = 22
+SEARCH_TERMS = ["dog", "cat", "flower", "mountain", "bike", "tree", "nature", "beach", "bird", "scorpion", "lion", "zebra"]
 
 # Drive setup
 DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")
@@ -32,77 +33,74 @@ def get_random_quote():
     except:
         return "Stay positive and keep moving forward"
 
-def download_random_png():
-    query = "animal"  # You can change this to 'abstract', 'nature', etc
-    url = f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q={query}&image_type=vector&colors=transparent&per_page=50"
-    
-    r = requests.get(url, timeout=10)
+def download_random_png_from_pixabay():
+    search_term = random.choice(SEARCH_TERMS)
+    params = {
+        "key": PIXABAY_API_KEY,
+        "q": search_term,
+        "image_type": "vector",
+        "per_page": 50,
+        "safesearch": "true",
+        "colors": "transparent"
+    }
+    r = requests.get(PIXABAY_URL, params=params, timeout=10, verify=False)
     r.raise_for_status()
     data = r.json()
 
     if not data["hits"]:
-        raise Exception("No images found.")
+        raise Exception(f"No images found for {search_term}")
 
-    # Pick a random image
-    import random
-    img_url = random.choice(data["hits"])["largeImageURL"]
+    chosen = random.choice(data["hits"])
+    img_url = chosen["largeImageURL"]
 
-    # Download image
-    img_resp = requests.get(img_url, timeout=10)
+    img_resp = requests.get(img_url, timeout=10, verify=False)
     img_resp.raise_for_status()
 
-    return Image.open(BytesIO(img_resp.content)).convert("RGBA")
+    img = Image.open(BytesIO(img_resp.content)).convert("RGBA")
+    local_path = f"downloaded_{int(time.time())}.png"
+    img.save(local_path)
+    print(f"Downloaded PNG for '{search_term}'")
+    return local_path
 
-def create_quote_image(quote):
-    try:
-        base_img = download_random_png()
+def create_quote_image(png_image_path, quote):
+    base_img = Image.new("RGBA", IMG_SIZE, (255, 255, 255, 0))
 
-        # Resize image to fit in upper 70% of canvas
-        max_img_width = int(IMG_SIZE[0] * 0.8)
-        max_img_height = int(IMG_SIZE[1] * 0.6)
-        base_img.thumbnail((max_img_width, max_img_height), Image.LANCZOS)
-    except Exception as e:
-        print("Failed to download PNG, fallback to blank image:", e)
-        base_img = Image.new("RGBA", IMG_SIZE, (255, 255, 255, 0))
+    png = Image.open(png_image_path).convert("RGBA")
+    png_w, png_h = png.size
 
-    # Create blank canvas
-    canvas = Image.new("RGBA", IMG_SIZE, (255, 255, 255, 0))
+    max_png_width = IMG_SIZE[0] * 0.8
+    if png_w > max_png_width:
+        ratio = max_png_width / png_w
+        png = png.resize((int(png_w * ratio), int(png_h * ratio)), Image.LANCZOS)
+        png_w, png_h = png.size
 
-    # Paste image on canvas, centered horizontally, placed higher vertically
-    img_x = (IMG_SIZE[0] - base_img.width) // 2
-    img_y = int(IMG_SIZE[1] * 0.1)
-    canvas.paste(base_img, (img_x, img_y), base_img)
+    x = (IMG_SIZE[0] - png_w) // 2
+    base_img.paste(png, (x, 100), png)
 
-    draw = ImageDraw.Draw(canvas)
+    draw = ImageDraw.Draw(base_img)
     try:
         font = ImageFont.truetype(FONT_PATH, FONT_SIZE)
     except:
         font = ImageFont.load_default()
 
-    # Wrap and calculate quote size
     lines = textwrap.wrap(quote, width=MAX_LINE_WIDTH)
-    total_height = len(lines) * (FONT_SIZE + 10)
-
-    # Place quote starting 80% down the canvas
-    y = int(IMG_SIZE[1] * 0.75)
+    total_text_height = len(lines) * (FONT_SIZE + 10)
+    text_start_y = png_h + 150
 
     for line in lines:
         w, h = draw.textbbox((0, 0), line, font=font)[2:]
-        x = (IMG_SIZE[0] - w) / 2
-        
-        # Draw optional outline (white border)
-        outline_range = 2
+        text_x = (IMG_SIZE[0] - w) / 2
+        text_y = text_start_y
+
+        outline_range = 3
         for ox in range(-outline_range, outline_range + 1):
             for oy in range(-outline_range, outline_range + 1):
-                draw.text((x + ox, y + oy), line, fill=(255, 255, 255), font=font)
+                draw.text((text_x + ox, text_y + oy), line, fill=(255, 255, 255), font=font)
 
-        # Draw main text
-        draw.text((x, y), line, fill=TEXT_COLOR, font=font)
-        y += FONT_SIZE + 10
+        draw.text((text_x, text_y), line, fill=TEXT_COLOR, font=font)
+        text_start_y += FONT_SIZE + 10
 
-    return canvas
-
-
+    return base_img
 
 def auth_drive():
     creds = service_account.Credentials.from_service_account_file(
@@ -125,7 +123,9 @@ def main():
     quote = get_random_quote()
     print("Quote:", quote)
 
-    img = create_quote_image(quote)
+    png_path = download_random_png_from_pixabay()
+
+    img = create_quote_image(png_path, quote)
 
     filename = f"quote_{int(time.time())}.png"
     img.save(filename)
@@ -135,6 +135,7 @@ def main():
     print("Uploaded to Drive, file ID =", file_id)
 
     os.remove(filename)
+    os.remove(png_path)
 
 if __name__ == "__main__":
     main()

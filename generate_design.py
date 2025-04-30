@@ -1,85 +1,88 @@
 import os
-import base64
-import json
-import random
+import time
 import textwrap
-from io import BytesIO
-from PIL import Image, ImageDraw, ImageFont
 import requests
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
+from PIL import Image, ImageDraw, ImageFont
 from google.oauth2 import service_account
-import time  # Corrected to use the time module
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
-# Fetch a random quote from quotable.io API
-def get_quote():
+# Config
+QUOTE_API        = "https://api.quotable.io/random?maxLength=100"
+IMG_SIZE         = (1024, 1024)
+BG_COLOR         = (255, 255, 255, 0)  # Transparent background (RGBA)
+TEXT_COLOR       = (255, 255, 255)      # White text
+FONT_PATH        = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+FONT_SIZE        = 48
+MAX_LINE_WIDTH   = 30                   # chars per wrapped line
+
+# Drive setup
+DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")
+if not DRIVE_FOLDER_ID:
+    raise Exception("Missing DRIVE_FOLDER_ID env var")
+
+def get_random_quote():
     try:
-        response = requests.get("https://api.quotable.io/random", verify=False)  # Disabled SSL verification for now
-        response.raise_for_status()  # Raise an exception for HTTP errors
-        quote = response.json()["content"]
-        return quote
-    except requests.exceptions.RequestException as e:
-        print(f"Failed to fetch quote: {e}")
-        return "Stay positive and keep pushing."
+        r = requests.get(QUOTE_API, timeout=10, verify=False)
+        r.raise_for_status()
+        return r.json()["content"]
+    except:
+        return "Stay positive and keep moving forward"
 
-# Create a t-shirt design based on the quote
-def create_design(quote):
-    # Set image size and background color (transparent)
-    image = Image.new("RGBA", (1000, 1000), (255, 255, 255, 0))  # Transparent background
-    draw = ImageDraw.Draw(image)
-
-    # Set font size and path (use a standard font or specify a font path)
+def create_quote_image(quote):
+    # Create image with a transparent background
+    img = Image.new("RGBA", IMG_SIZE, BG_COLOR)
+    draw = ImageDraw.Draw(img)
     try:
-        font = ImageFont.truetype("arial.ttf", 48)  # Adjust font and size as needed
-    except IOError:
-        font = ImageFont.load_default()  # Fallback if arial is unavailable
+        font = ImageFont.truetype(FONT_PATH, FONT_SIZE)
+    except:
+        font = ImageFont.load_default()
 
-    # Wrap text to fit the design
-    wrapped_text = textwrap.fill(quote, width=30)
+    # wrap text into lines
+    lines = textwrap.wrap(quote, width=MAX_LINE_WIDTH)
+    total_height = len(lines) * (FONT_SIZE + 10)
+    y = (IMG_SIZE[1] - total_height) / 2
 
-    # Draw the text onto the image
-    draw.text((50, 200), wrapped_text, font=font, fill="black")
+    for line in lines:
+        w, h = draw.textbbox((0, 0), line, font=font)[2:]  # For width and height of text
+        x = (IMG_SIZE[0] - w) / 2
+        draw.text((x, y), line, fill=TEXT_COLOR, font=font)
+        y += FONT_SIZE + 10
 
-    return image
+    return img
 
-# Upload the design to Google Drive
-def upload_to_drive(image, filename):
-    # Get base64-encoded credentials from environment
-    encoded_credentials = os.environ['google_credential']
+def auth_drive():
+    creds = service_account.Credentials.from_service_account_file(
+        "service_account.json",
+        scopes=["https://www.googleapis.com/auth/drive.file"]
+    )
+    return build("drive", "v3", credentials=creds)
 
-    # Decode from base64
-    credentials_json = base64.b64decode(encoded_credentials).decode('utf-8')
+def upload_to_drive(local_path, name=None):
+    service = auth_drive()
+    metadata = {
+        "name": name or os.path.basename(local_path),
+        "parents": [DRIVE_FOLDER_ID]
+    }
+    media = MediaFileUpload(local_path, mimetype="image/png")
+    file = service.files().create(body=metadata, media_body=media, fields="id").execute()
+    return file.get("id")
 
-    # Load JSON credentials
-    credentials_info = json.loads(credentials_json)
-
-    # Authenticate to Google Drive
-    credentials = service_account.Credentials.from_service_account_info(credentials_info)
-    service = build('drive', 'v3', credentials=credentials)
-
-    # Save image to a BytesIO buffer
-    buffer = BytesIO()
-    image.save(buffer, format="PNG")
-    buffer.seek(0)
-
-    # Upload to Google Drive
-    file_metadata = {'name': filename}
-    media = MediaIoBaseUpload(buffer, mimetype='image/png')
-    service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-
-# Main function to fetch the quote, create the design, and upload it
 def main():
-    # Fetch a random quote
-    quote = get_quote()
+    quote = get_random_quote()
+    print("Quote:", quote)
 
-    # Create design based on the quote
-    image = create_design(quote)
+    img = create_quote_image(quote)
 
-    # Generate a unique filename using timestamp
-    filename = f"quote_{int(time.time())}.png"  # Fixed to use time.time()
+    # Use time.time() instead of textwrap.time
+    filename = f"quote_{int(time.time())}.png"
+    img.save(filename, format="PNG", quality=100)  # Ensure high quality for printing
+    print("Saved image:", filename)
 
-    # Upload the design to Google Drive
-    upload_to_drive(image, filename)
+    file_id = upload_to_drive(filename, filename)
+    print("Uploaded to Drive, file ID =", file_id)
+
+    os.remove(filename)
 
 if __name__ == "__main__":
     main()

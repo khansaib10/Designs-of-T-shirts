@@ -2,25 +2,19 @@ import os
 import time
 import textwrap
 import requests
-import random
-from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from io import BytesIO
 
 # Config
-QUOTE_API = "https://api.quotable.io/random?maxLength=100"
 PIXABAY_API_KEY = "50023073-76bc3ff20218626ffd04d9237"
-PIXABAY_URL = "https://pixabay.com/api/"
-IMG_SIZE = (1200, 1600)
-TEXT_COLOR = (0, 0, 0)
+QUOTE_API = "https://api.quotable.io/random?maxLength=100"
+IMG_SIZE = (1500, 1500)
 FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-FONT_SIZE = 80
-MAX_LINE_WIDTH = 22
-SEARCH_TERMS = ["dog", "cat", "flower", "mountain", "bike", "tree", "nature", "beach", "bird", "scorpion", "lion", "zebra"]
-
-# Drive setup
+FONT_SIZE = 48
+MAX_LINE_WIDTH = 30
 DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")
 if not DRIVE_FOLDER_ID:
     raise Exception("Missing DRIVE_FOLDER_ID env var")
@@ -33,51 +27,40 @@ def get_random_quote():
     except:
         return "Stay positive and keep moving forward"
 
-def download_random_png_from_pixabay():
-    search_term = random.choice(SEARCH_TERMS)
-    params = {
-        "key": PIXABAY_API_KEY,
-        "q": search_term,
-        "image_type": "vector",
-        "per_page": 50,
-        "safesearch": "true",
-        "colors": "transparent"
-    }
-    r = requests.get(PIXABAY_URL, params=params, timeout=10, verify=False)
-    r.raise_for_status()
-    data = r.json()
+def download_random_png():
+    try:
+        url = f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q=&image_type=vector&per_page=50&colors=transparent"
+        r = requests.get(url, timeout=10)
+        r.raise_for_status()
+        hits = r.json().get("hits", [])
+        if not hits:
+            raise Exception("No images found")
+        image_url = hits[0]["largeImageURL"].replace("_640", "_1280")
+        img_data = requests.get(image_url, timeout=10).content
+        return Image.open(BytesIO(img_data)).convert("RGBA")
+    except:
+        # fallback if API fails
+        img = Image.new("RGBA", IMG_SIZE, (255, 255, 255, 0))
+        return img
 
-    if not data["hits"]:
-        raise Exception(f"No images found for {search_term}")
+def create_combined_image(quote):
+    background = Image.new("RGBA", IMG_SIZE, (255, 255, 255, 0))  # transparent background
 
-    chosen = random.choice(data["hits"])
-    img_url = chosen["largeImageURL"]
+    png_img = download_random_png()
 
-    img_resp = requests.get(img_url, timeout=10, verify=False)
-    img_resp.raise_for_status()
+    # Scale down the PNG image
+    scale_factor = 0.5
+    new_size = (int(png_img.width * scale_factor), int(png_img.height * scale_factor))
+    png_img = png_img.resize(new_size, Image.LANCZOS)
 
-    img = Image.open(BytesIO(img_resp.content)).convert("RGBA")
-    local_path = f"downloaded_{int(time.time())}.png"
-    img.save(local_path)
-    print(f"Downloaded PNG for '{search_term}'")
-    return local_path
+    # Paste the PNG higher (Y offset up)
+    png_x = (IMG_SIZE[0] - png_img.width) // 2
+    png_y = (IMG_SIZE[1] - png_img.height) // 3  # move it UP a little
 
-def create_quote_image(png_image_path, quote):
-    base_img = Image.new("RGBA", IMG_SIZE, (255, 255, 255, 0))
+    background.paste(png_img, (png_x, png_y), png_img)
 
-    png = Image.open(png_image_path).convert("RGBA")
-    png_w, png_h = png.size
-
-    max_png_width = IMG_SIZE[0] * 0.8
-    if png_w > max_png_width:
-        ratio = max_png_width / png_w
-        png = png.resize((int(png_w * ratio), int(png_h * ratio)), Image.LANCZOS)
-        png_w, png_h = png.size
-
-    x = (IMG_SIZE[0] - png_w) // 2
-    base_img.paste(png, (x, 100), png)
-
-    draw = ImageDraw.Draw(base_img)
+    # Add text below
+    draw = ImageDraw.Draw(background)
     try:
         font = ImageFont.truetype(FONT_PATH, FONT_SIZE)
     except:
@@ -85,22 +68,15 @@ def create_quote_image(png_image_path, quote):
 
     lines = textwrap.wrap(quote, width=MAX_LINE_WIDTH)
     total_text_height = len(lines) * (FONT_SIZE + 10)
-    text_start_y = png_h + 150
+    text_y = png_y + png_img.height + 30  # start a bit below image
 
     for line in lines:
         w, h = draw.textbbox((0, 0), line, font=font)[2:]
         text_x = (IMG_SIZE[0] - w) / 2
-        text_y = text_start_y
+        draw.text((text_x, text_y), line, fill=(0, 0, 0), font=font)
+        text_y += FONT_SIZE + 10
 
-        outline_range = 3
-        for ox in range(-outline_range, outline_range + 1):
-            for oy in range(-outline_range, outline_range + 1):
-                draw.text((text_x + ox, text_y + oy), line, fill=(255, 255, 255), font=font)
-
-        draw.text((text_x, text_y), line, fill=TEXT_COLOR, font=font)
-        text_start_y += FONT_SIZE + 10
-
-    return base_img
+    return background
 
 def auth_drive():
     creds = service_account.Credentials.from_service_account_file(
@@ -123,9 +99,7 @@ def main():
     quote = get_random_quote()
     print("Quote:", quote)
 
-    png_path = download_random_png_from_pixabay()
-
-    img = create_quote_image(png_path, quote)
+    img = create_combined_image(quote)
 
     filename = f"quote_{int(time.time())}.png"
     img.save(filename)
@@ -135,7 +109,6 @@ def main():
     print("Uploaded to Drive, file ID =", file_id)
 
     os.remove(filename)
-    os.remove(png_path)
 
 if __name__ == "__main__":
     main()

@@ -32,9 +32,9 @@ def get_random_quote():
     except:
         return "Stay positive and keep moving forward"
 
-def download_random_png(keyword=""):
+def download_random_png():
     try:
-        url = f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q={keyword}&image_type=vector&per_page=50&colors=transparent"
+        url = f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&image_type=vector&per_page=50&colors=transparent"
         r = requests.get(url, timeout=10)
         r.raise_for_status()
         hits = r.json().get("hits", [])
@@ -53,8 +53,8 @@ def download_random_png(keyword=""):
         img = Image.new("RGBA", IMG_SIZE, (255, 255, 255, 0))  # Transparent image
         return img
 
-def create_quote_image(quote, keyword=""):
-    img = download_random_png(keyword)
+def create_quote_image(quote):
+    img = download_random_png()
     draw = ImageDraw.Draw(img)
     try:
         font = ImageFont.truetype(FONT_PATH, FONT_SIZE)
@@ -95,10 +95,7 @@ def main():
     quote = get_random_quote()
     print("Quote:", quote)
 
-    # Choose a keyword (you can customize or use dynamic input)
-    keyword = "dog"  # Example: You can change this to "cat", "adventure", "bike", etc.
-
-    img = create_quote_image(quote, keyword)
+    img = create_quote_image(quote)
 
     # Save image with timestamped filename
     filename = f"quote_{int(time.time())}.png"

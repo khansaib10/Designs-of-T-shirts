@@ -68,15 +68,26 @@ def create_quote_image(quote):
     # wrap text
     lines = textwrap.wrap(quote, width=MAX_LINE_WIDTH)
     total_height = len(lines) * (FONT_SIZE + 10)
-    y = IMG_SIZE[1] - total_height - 50  # 50px above bottom
+
+    padding_bottom = 100  # Push text higher
+    y = IMG_SIZE[1] - total_height - padding_bottom
 
     for line in lines:
         w, h = draw.textbbox((0, 0), line, font=font)[2:]
         x = (IMG_SIZE[0] - w) / 2
+        
+        # Optional: Draw a white outline behind text for visibility
+        outline_range = 2
+        for ox in range(-outline_range, outline_range + 1):
+            for oy in range(-outline_range, outline_range + 1):
+                draw.text((x + ox, y + oy), line, fill=(255, 255, 255), font=font)
+
+        # Main black text
         draw.text((x, y), line, fill=TEXT_COLOR, font=font)
         y += FONT_SIZE + 10
 
     return base_img
+
 
 def auth_drive():
     creds = service_account.Credentials.from_service_account_file(

@@ -1,12 +1,12 @@
-name: Generate and Upload T-shirt Design
+name: Generate and Upload T-shirt Designs
 
 on:
-  schedule:
-    - cron: "*/30 * * * *"  # Every 30 minutes
   workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"
 
 jobs:
-  generate_upload:
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -24,10 +24,9 @@ jobs:
 
     - name: Create service_account.json
       run: |
-        echo "${{ secrets.GOOGLE_CREDENTIALS }}" > service_account.json
+        echo "${{ secrets.GOOGLE_CREDENTIALS }}" | base64 -d > service_account.json
 
-    - name: Run generate script
+    - name: Run generator
       env:
         DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
-      run: |
-        python generate_design.py
+      run: python generate_design.py

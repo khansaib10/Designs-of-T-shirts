@@ -1,90 +1,85 @@
 import os
+import textwrap
+import requests
+from PIL import Image, ImageDraw, ImageFont
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-from PIL import Image, ImageDraw, ImageFont
-import random
-import string
-import time
 
-# Function to authenticate with Google API using the service account
-def authenticate_google_drive():
-    credentials = service_account.Credentials.from_service_account_file(
-        'service_account.json',  # This will be created during the GitHub Actions step
-        scopes=['https://www.googleapis.com/auth/drive.file']
-    )
-    return build('drive', 'v3', credentials=credentials)
+# Config
+QUOTE_API = "https://api.quotable.io/random?maxLength=100"
+IMG_SIZE = (1024, 1024)
+BG_COLOR = (0, 0, 0)        # black background
+TEXT_COLOR = (255, 255, 255)  # white text
+FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+FONT_SIZE = 48
+MAX_LINE_WIDTH = 30         # characters per line for wrap
 
-# Function to create a random design name
-def generate_random_filename():
-    return ''.join(random.choices(string.ascii_letters + string.digits, k=10)) + '.png'
+# Drive setup
+DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")
+if not DRIVE_FOLDER_ID:
+    raise Exception("Missing DRIVE_FOLDER_ID env var")
 
-# Function to create an image (for demonstration purposes, just a simple image with text)
-def create_image(image_path):
-    # Create a new blank image (RGB mode, 100x100 pixels, white background)
-    img = Image.new('RGB', (100, 100), color='white')
-    d = ImageDraw.Draw(img)
-
-    # You can customize the font and text
+def get_random_quote():
     try:
-        font = ImageFont.load_default()  # Load the default font
-    except IOError:
+        r = requests.get(QUOTE_API, timeout=10, verify=False)
+        r.raise_for_status()
+        return r.json()["content"]
+    except:
+        # fallback
+        return "Stay positive and keep moving forward"
+
+def create_quote_image(quote):
+    img = Image.new("RGB", IMG_SIZE, BG_COLOR)
+    draw = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.truetype(FONT_PATH, FONT_SIZE)
+    except:
         font = ImageFont.load_default()
 
-    text = "Design"
-    d.text((10, 40), text, fill=(0, 0, 0), font=font)
+    # wrap text
+    lines = textwrap.wrap(quote, width=MAX_LINE_WIDTH)
+    total_height = len(lines) * (FONT_SIZE + 10)
+    y = (IMG_SIZE[1] - total_height) / 2
 
-    # Save the image to the specified path
-    img.save(image_path)
+    for line in lines:
+        w, h = draw.textbbox((0,0), line, font=font)[2:]
+        x = (IMG_SIZE[0] - w) / 2
+        draw.text((x, y), line, fill=TEXT_COLOR, font=font)
+        y += FONT_SIZE + 10
 
-# Function to upload the design to Google Drive
-def upload_to_drive(file_path, folder_id):
-    drive_service = authenticate_google_drive()
+    return img
 
-    # Create the file metadata with the folder ID
-    file_metadata = {
-        'name': generate_random_filename(),
-        'parents': [folder_id]
+def auth_drive():
+    creds = service_account.Credentials.from_service_account_file(
+        "service_account.json",
+        scopes=["https://www.googleapis.com/auth/drive.file"]
+    )
+    return build("drive", "v3", credentials=creds)
+
+def upload_to_drive(local_path, name=None):
+    service = auth_drive()
+    metadata = {
+        "name": name or os.path.basename(local_path),
+        "parents": [DRIVE_FOLDER_ID]
     }
+    media = MediaFileUpload(local_path, mimetype="image/png")
+    file = service.files().create(body=metadata, media_body=media, fields="id").execute()
+    return file.get("id")
 
-    media = MediaFileUpload(file_path, mimetype='image/png')
-
-    # Upload the file
-    file = drive_service.files().create(
-        body=file_metadata,
-        media_body=media,
-        fields='id'
-    ).execute()
-
-    print(f"File uploaded: {file['id']}")
-
-# Function to simulate design generation (replace with actual logic)
-def generate_design():
-    # Simulating the design creation process
-    filename = generate_random_filename()
-    print(f"Generating design: {filename}")
-    
-    # Create a valid image (replace with actual design generation logic)
-    image_path = f"./{filename}"
-    create_image(image_path)
-    
-    return image_path
-
-# Main logic to generate and upload the design
 def main():
-    folder_id = os.environ.get('DRIVE_FOLDER_ID')  # Ensure this environment variable is set in GitHub Actions
+    quote = get_random_quote()
+    print("Quote:", quote)
 
-    if folder_id is None:
-        raise ValueError("DRIVE_FOLDER_ID environment variable is not set.")
+    img = create_quote_image(quote)
+    filename = f"quote_{int(textwrap.time.time())}.png"
+    img.save(filename)
+    print("Saved image:", filename)
 
-    # Generate a random design (simulated here, replace with actual design logic)
-    design_filename = generate_design()
+    file_id = upload_to_drive(filename, filename)
+    print("Uploaded to Drive, file ID =", file_id)
 
-    # Upload the design to Google Drive
-    upload_to_drive(design_filename, folder_id)
+    os.remove(filename)
 
-    # Optionally, remove the design file after upload
-    os.remove(design_filename)
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

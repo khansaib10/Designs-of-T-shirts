@@ -10,17 +10,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-    - name: Setup Python
+    - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: 3.11
 
     - name: Install dependencies
       run: |
-        pip install -r requirements.txt
+        pip install pillow requests google-api-python-client google-auth
 
     - name: Create service_account.json
       run: |

@@ -1,9 +1,9 @@
 name: Generate T-shirt Design
 
 on:
-  workflow_dispatch:  # manual run
+  workflow_dispatch:  # Manual run
   schedule:
-    - cron: "*/30 * * * *"  # every 30 minutes
+    - cron: "*/30 * * * *"  # Run every 30 minutes
 
 jobs:
   build:
@@ -20,11 +20,9 @@ jobs:
 
     - name: Install dependencies
       run: |
-        pip install pillow requests google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib
+        pip install requests pillow
 
     - name: Run Python script
       env:
-        HORDE_API_KEY: ${{ secrets.HORDE_API_KEY }}
-        GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
         DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
       run: python generate_design.py

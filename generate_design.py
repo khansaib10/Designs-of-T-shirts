@@ -8,7 +8,7 @@ from io import BytesIO
 # Get environment variables
 HORDE_API_KEY = os.getenv("HORDE_API_KEY")
 GOOGLE_CREDENTIALS = os.getenv("GOOGLE_CREDENTIALS")
-UPLOAD_FOLDER_ID = os.getenv("UPLOAD_FOLDER_ID")
+UPLOAD_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")
 
 if not HORDE_API_KEY:
     raise Exception("HORDE_API_KEY is missing in environment variables.")

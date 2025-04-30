@@ -3,25 +3,30 @@ import random
 import time
 import requests
 from PIL import Image, ImageDraw, ImageFont
-from pydrive.auth import GoogleAuth
-from pydrive.drive import GoogleDrive
-
-# Authenticate with Google Drive
-gauth = GoogleAuth()
-gauth.LocalWebserverAuth()
-drive = GoogleDrive(gauth)
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
 # Settings
 WIDTH = 1024
 HEIGHT = 1024
-FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"  # You can change font if you want
+FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_SIZE = 60
 QUOTE_API = "https://api.quotable.io/random?maxLength=50"
 
-# Drive Folder ID (Must set in GitHub Actions secrets as DRIVE_FOLDER_ID)
+# Google Drive
 DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")
 if not DRIVE_FOLDER_ID:
     raise Exception("DRIVE_FOLDER_ID is missing in environment variables.")
+
+SERVICE_ACCOUNT_FILE = "service_account.json"
+SCOPES = ['https://www.googleapis.com/auth/drive.file']
+
+def get_drive_service():
+    credentials = service_account.Credentials.from_service_account_file(
+        SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+    service = build('drive', 'v3', credentials=credentials)
+    return service
 
 def fetch_quote():
     """Fetch a random quote."""
@@ -53,13 +58,13 @@ def create_text_image(text):
     return img
 
 def upload_to_drive(file_path, file_name):
-    """Upload a file to Google Drive."""
-    file = drive.CreateFile({
-        'title': file_name,
-        'parents': [{'id': DRIVE_FOLDER_ID}]
-    })
-    file.SetContentFile(file_path)
-    file.Upload()
+    service = get_drive_service()
+    file_metadata = {
+        'name': file_name,
+        'parents': [DRIVE_FOLDER_ID]
+    }
+    media = MediaFileUpload(file_path, mimetype='image/png')
+    file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
     print(f"✅ Uploaded {file_name} to Google Drive.")
 
 def main():
@@ -75,7 +80,6 @@ def main():
 
     upload_to_drive(file_path, file_name)
 
-    # Cleanup
     os.remove(file_path)
     print(f"🧹 Local file {file_name} deleted.")
 

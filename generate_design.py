@@ -1,72 +1,50 @@
 import os
-import io
+import base64
 import json
-import requests
+import random
+import textwrap
+from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
-from google.oauth2 import service_account
+import requests
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
-import time
+from google.oauth2 import service_account
 
-# Get random quote from Quotable API
+# Fetch a random quote from quotable.io API
 def get_quote():
     try:
-        response = requests.get("https://api.quotable.io/random", timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        return data['content']
-    except Exception as e:
+        response = requests.get("https://api.quotable.io/random")
+        response.raise_for_status()  # Raise an exception for HTTP errors
+        quote = response.json()["content"]
+        return quote
+    except requests.exceptions.RequestException as e:
         print(f"Failed to fetch quote: {e}")
         return "Stay positive and keep pushing."
 
-# Create transparent high-quality design
+# Create a t-shirt design based on the quote
 def create_design(quote):
-    # Create a transparent image (4000x4000px for T-shirt quality)
-    width, height = 4000, 4000
-    image = Image.new('RGBA', (width, height), (255, 255, 255, 0))  # Transparent
-
+    # Set image size and background color (transparent)
+    image = Image.new("RGBA", (1000, 1000), (255, 255, 255, 0))  # Transparent background
     draw = ImageDraw.Draw(image)
 
-    # Load a font
+    # Set font size and path (use a standard font or specify a font path)
     try:
-        font = ImageFont.truetype("arial.ttf", size=180)
-    except:
-        font = ImageFont.load_default()
+        font = ImageFont.truetype("arial.ttf", 48)  # Adjust font and size as needed
+    except IOError:
+        font = ImageFont.load_default()  # Fallback if arial is unavailable
 
-    # Split quote into multiple lines if too long
-    lines = []
-    words = quote.split()
-    line = ""
-    for word in words:
-        test_line = f"{line} {word}".strip()
-        bbox = draw.textbbox((0, 0), test_line, font=font)
-        line_width = bbox[2] - bbox[0]
-        if line_width > width * 0.8:
-            lines.append(line)
-            line = word
-        else:
-            line = test_line
-    lines.append(line)
+    # Wrap text to fit the design
+    wrapped_text = textwrap.fill(quote, width=30)
 
-    # Calculate total text height
-    total_text_height = sum(draw.textbbox((0, 0), l, font=font)[3] - draw.textbbox((0, 0), l, font=font)[1] for l in lines)
-    y = (height - total_text_height) // 2
-
-    # Draw each line centered
-    for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font)
-        line_width = bbox[2] - bbox[0]
-        line_height = bbox[3] - bbox[1]
-        x = (width - line_width) // 2
-        draw.text((x, y), line, fill=(0, 0, 0, 255), font=font)  # Black text
-        y += line_height + 20  # 20px between lines
+    # Draw the text onto the image
+    draw.text((50, 200), wrapped_text, font=font, fill="black")
 
     return image
 
-# Upload image to Google Drive
+# Upload the design to Google Drive
 def upload_to_drive(image, filename):
     # Get base64-encoded credentials from environment
-    encoded_credentials = os.environ['GOOGLE_CREDENTIALS']
+    encoded_credentials = os.environ['google_credential']
 
     # Decode from base64
     credentials_json = base64.b64decode(encoded_credentials).decode('utf-8')
@@ -88,15 +66,18 @@ def upload_to_drive(image, filename):
     media = MediaIoBaseUpload(buffer, mimetype='image/png')
     service.files().create(body=file_metadata, media_body=media, fields='id').execute()
 
-
-# Main function
+# Main function to fetch the quote, create the design, and upload it
 def main():
+    # Fetch a random quote
     quote = get_quote()
-    print(f"Quote: {quote}")
 
+    # Create design based on the quote
     image = create_design(quote)
-    filename = f"quote_{int(time.time())}.png"
 
+    # Generate a unique filename using timestamp
+    filename = f"quote_{int(random.time())}.png"
+
+    # Upload the design to Google Drive
     upload_to_drive(image, filename)
 
 if __name__ == "__main__":

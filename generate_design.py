@@ -40,7 +40,11 @@ def create_design(text):
 
     y_offset = 400
     for line in wrapped_text.split('\n'):
-        line_width, line_height = draw.textsize(line, font=font)
+        # Calculate text size correctly
+        bbox = draw.textbbox((0, 0), line, font=font)
+        line_width = bbox[2] - bbox[0]
+        line_height = bbox[3] - bbox[1]
+
         x = (width - line_width) // 2
         draw.text((x, y_offset), line, font=font, fill=(255, 255, 255, 255))
         y_offset += line_height + 20

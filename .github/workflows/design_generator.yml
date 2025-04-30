@@ -1,9 +1,9 @@
-name: Generate T-shirt Designs
+name: Generate Premium T-shirt Design
 
 on:
-  workflow_dispatch:  # Allows for manual trigger
+  workflow_dispatch:
   schedule:
-    - cron: "*/30 * * * *"  # Runs every 30 minutes
+    - cron: "*/30 * * * *"
 
 jobs:
   build:
@@ -15,14 +15,14 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: "3.x"
+        python-version: "3.11"
 
     - name: Install dependencies
       run: |
-        pip install requests pillow google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib
+        pip install pillow google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib
 
     - name: Run design generator
       env:
-        GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}  # Your Google credentials JSON
-        DRIVE_FOLDER_ID:    ${{ secrets.DRIVE_FOLDER_ID }}  # Your Google Drive folder ID
+        GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+        DRIVE_FOLDER_ID:    ${{ secrets.DRIVE_FOLDER_ID }}
       run: python generate_design.py
